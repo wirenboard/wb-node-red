@@ -18,6 +18,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import diag
 from .compose import ComposeRunner
 from .descriptor import read_descriptor
 from .mqtt_provision import MqttProvisioner
@@ -97,6 +98,24 @@ class Helper:
             mosquitto_conf_dir=self.paths.mosquitto_conf_dir,
             mosquitto_dropin_dir=self.paths.mosquitto_dropin_dir,
         ).provision()
+
+    def register_diag(self) -> None:
+        """Make services visible in wb-diag-collect (design.md §3.5.1, #5).
+
+        Registers the collector command into wb-diag-collect's single main
+        config, because the released tool has no conf.d merge (see diag.py).
+        Run once at helper install; idempotent and a no-op when wb-diag-collect
+        is not installed.
+        """
+        diag.register()
+
+    def deregister_diag(self) -> None:
+        """Remove the collector command from wb-diag-collect's main config.
+
+        Inverse of :meth:`register_diag`, run when the helper is removed so the
+        helper leaves wb-diag-collect's config as it found it.
+        """
+        diag.deregister()
 
     def _compose(self, app: str) -> ComposeRunner:
         return ComposeRunner(
@@ -187,6 +206,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("list")
     # System-level, no app argument: run once at helper install (design.md §3.7).
     sub.add_parser("provision-mqtt")
+    # wb-diag-collect integration (design.md §3.5.1, #5): register/deregister the
+    # collector command in the diag tool's main config at helper install/remove.
+    sub.add_parser("register-diag")
+    sub.add_parser("deregister-diag")
     return parser
 
 
@@ -198,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
             print(app)
     elif args.command == "provision-mqtt":
         helper.provision_mqtt()
+    elif args.command == "register-diag":
+        helper.register_diag()
+    elif args.command == "deregister-diag":
+        helper.deregister_diag()
     else:
         getattr(helper, args.command)(args.app)
     return 0

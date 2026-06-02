@@ -20,6 +20,13 @@ case "$1" in
 		# restart mosquitto needlessly. Service installs never call this — they
 		# attach to the already-provisioned `wb` network.
 		wb-docker-app provision-mqtt
+		# Make containerized services first-class in the diagnostic archive
+		# (design.md §3.5.1, issue #5). The released wb-diag-collect reads
+		# only its single main config and has no conf.d merge, so the shipped
+		# conf.d drop-in alone is inert; register the collector command into
+		# that main config here. Idempotent, and a no-op if wb-diag-collect
+		# is not installed.
+		wb-docker-app register-diag
 		;;
 	abort-upgrade | abort-remove | abort-deconfigure) ;;
 	*)

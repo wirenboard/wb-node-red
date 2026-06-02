@@ -270,3 +270,117 @@ def test_a_service_install_never_touches_mosquitto(paths):
 
     assert not runner.issued("systemctl", "restart", "mosquitto")
     assert not runner.issued("docker", "network", "create")
+
+
+# --- wb-diag-collect integration (issue #5) ---------------------------------
+#
+# The released wb-diag-collect reads ONLY its single main config (no conf.d
+# merge), so the shipped drop-in is inert on a current controller. The helper
+# closes the gap by registering its collector `command` into that main config
+# at install and removing it at uninstall. These tests pin that merge — pure,
+# idempotent, and surgical (it touches only our entry).
+
+from wb_docker_app import diag  # noqa: E402
+
+
+def _yaml_or_skip():
+    return pytest.importorskip("yaml")
+
+
+_MAIN_CONF = """\
+timeout: 10
+journald_logs:
+  names:
+    - wb-*.service
+commands:
+  - filename: ps_aux
+    command: ps aux
+files:
+  - /etc/group
+"""
+
+
+def test_register_adds_the_collector_command_to_main_config(tmp_path):
+    yaml = _yaml_or_skip()
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text(_MAIN_CONF)
+
+    assert diag.register(conf) is True
+
+    data = yaml.safe_load(conf.read_text())
+    ours = [c for c in data["commands"] if c["filename"] == diag.COLLECTOR_FILENAME]
+    assert len(ours) == 1
+    assert ours[0]["command"] == diag.COLLECTOR_CMD
+    # Pre-existing entries and other keys are preserved untouched.
+    assert {"filename": "ps_aux", "command": "ps aux"} in data["commands"]
+    assert data["timeout"] == 10
+    assert data["files"] == ["/etc/group"]
+
+
+def test_register_is_idempotent(tmp_path):
+    _yaml_or_skip()
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text(_MAIN_CONF)
+
+    assert diag.register(conf) is True
+    after_first = conf.read_text()
+    # Second run is a no-op: returns False and does not duplicate our entry.
+    assert diag.register(conf) is False
+    assert conf.read_text() == after_first
+
+
+def test_register_is_a_noop_when_diag_collect_is_not_installed(tmp_path):
+    # No config file => wb-diag-collect absent => nothing to integrate with.
+    missing = tmp_path / "absent.conf"
+    assert diag.register(missing) is False
+    assert not missing.exists()
+
+
+def test_deregister_removes_only_our_entry(tmp_path):
+    yaml = _yaml_or_skip()
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text(_MAIN_CONF)
+    diag.register(conf)
+
+    assert diag.deregister(conf) is True
+
+    data = yaml.safe_load(conf.read_text())
+    assert all(c["filename"] != diag.COLLECTOR_FILENAME for c in data["commands"])
+    # The pre-existing command survives.
+    assert {"filename": "ps_aux", "command": "ps aux"} in data["commands"]
+    # Deregistering again is a no-op.
+    assert diag.deregister(conf) is False
+
+
+def test_register_then_deregister_round_trips(tmp_path):
+    yaml = _yaml_or_skip()
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text(_MAIN_CONF)
+    original = yaml.safe_load(conf.read_text())
+
+    diag.register(conf)
+    diag.deregister(conf)
+
+    assert yaml.safe_load(conf.read_text()) == original
+
+
+def test_cli_register_diag_invokes_the_merge(paths, monkeypatch):
+    # The `register-diag` verb (run from postinst) delegates to diag.register.
+    called = {}
+    monkeypatch.setattr(diag, "register", lambda: called.setdefault("reg", True))
+    Helper(FakeRunner(), paths).register_diag()
+    assert called.get("reg") is True
+
+
+def test_cli_deregister_diag_invokes_the_merge(paths, monkeypatch):
+    called = {}
+    monkeypatch.setattr(diag, "deregister", lambda: called.setdefault("dereg", True))
+    Helper(FakeRunner(), paths).deregister_diag()
+    assert called.get("dereg") is True
+
+
+def test_parser_dispatches_register_and_deregister_diag():
+    assert build_parser().parse_args(["register-diag"]).command == "register-diag"
+    assert (
+        build_parser().parse_args(["deregister-diag"]).command == "deregister-diag"
+    )

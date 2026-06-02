@@ -1,0 +1,27 @@
+#!/bin/sh
+# prerm for wb-docker-app (helper) — wb-diag-collect cleanup (design.md §3.5.1,
+# issue #5).
+#
+# On removal, undo the diag integration the postinst added: drop the collector
+# command from wb-diag-collect's main config so the helper leaves that config
+# as it found it. Skipped on upgrade, where the entry must persist. The CLI is
+# still on disk at prerm time (files are removed after), so we can call it.
+# Idempotent and a no-op if wb-diag-collect is not installed.
+set -e
+
+case "$1" in
+	remove | deconfigure)
+		if [ -x /usr/bin/wb-docker-app ]; then
+			wb-docker-app deregister-diag || true
+		fi
+		;;
+	upgrade | failed-upgrade) ;;
+	*)
+		echo "prerm called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -8,7 +8,7 @@ Rules-Requires-Root: no
 
 Package: wb-docker-app
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3, docker-compose-plugin
+Depends: ${python3:Depends}, ${misc:Depends}, python3, python3-yaml, docker-compose-plugin
 Description: Shared helper for containerized services on Wiren Board controllers
  wb-docker-app is the shared lifecycle helper for Wiren Board docker-based
  service packages. It ships the single templated systemd unit

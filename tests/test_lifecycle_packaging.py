@@ -10,12 +10,16 @@ only on purpose:
 * a wb-diag-collect drop-in + collector script that put each service's
   ``systemctl status`` and recent logs into the diagnostic archive;
 * the helper's ``debian/*.install`` actually maps all three to their on-target
-  paths.
+  paths;
+* the postinst/prerm hooks that *register* the collector command into
+  wb-diag-collect's single main config — the released tool has no conf.d merge,
+  so the drop-in alone is inert (the merge itself is unit-tested in
+  tests/test_cli.py against wb_docker_app.diag).
 
-Everything here is local file presence/shape/shellcheck — the real
-unattended-upgrades and wb-diag-collect/collect behaviour on a controller is a
-manual-verification item (see the issue-5 audit). YAML shape is asserted only
-when PyYAML is present, so the suite stays green without it.
+Everything here is local file presence/shape/shellcheck — running
+unattended-upgrades and wb-diag-collect end-to-end on a controller is still a
+manual-verification item. YAML shape is asserted only when PyYAML is present,
+so the suite stays green without it.
 """
 
 from __future__ import annotations
@@ -107,6 +111,25 @@ def test_diag_collector_captures_status_and_logs_per_instance():
     # Captures both systemctl status and recent journal logs per instance.
     assert "systemctl status" in text
     assert "journalctl" in text
+
+
+def test_postinst_registers_collector_in_main_config():
+    # The released wb-diag-collect has no conf.d merge, so the drop-in alone is
+    # inert; the helper's postinst must actively register the collector command
+    # into wb-diag-collect's main config for the AC to hold on a controller.
+    text = (HELPER / "debian" / "postinst").read_text()
+    assert "wb-docker-app register-diag" in text
+
+
+def test_prerm_deregisters_collector_from_main_config():
+    # On removal the helper must undo that registration so it leaves
+    # wb-diag-collect's config as it found it.
+    prerm = HELPER / "debian" / "prerm"
+    assert prerm.is_file()
+    text = prerm.read_text()
+    assert "wb-docker-app deregister-diag" in text
+    # Only on remove, not on upgrade (the entry must survive upgrades).
+    assert "upgrade" in text
 
 
 def test_diag_files_land_in_their_target_paths():
