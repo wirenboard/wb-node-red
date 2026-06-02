@@ -1,0 +1,29 @@
+#!/bin/sh
+# prerm for wb-echo (design.md §4, issue #7).
+#
+# Thin glue: source the shared library and delegate teardown to the helper.
+# Runs on remove/purge before the package files go away, so the helper can
+# still read the base compose to bring the project down cleanly. Removing echo
+# leaves Node-RED, the broker and the wb network untouched.
+set -e
+
+LIB=/usr/lib/wb-docker-app/lib/wb-docker-app.sh
+
+case "$1" in
+	remove | deconfigure)
+		if [ -f "$LIB" ]; then
+			# shellcheck source=/dev/null
+			. "$LIB"
+			wb_docker_app_remove echo
+		fi
+		;;
+	upgrade | failed-upgrade) ;;
+	*)
+		echo "prerm called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

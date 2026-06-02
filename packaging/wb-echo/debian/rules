@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+# Build rules for wb-echo (service).
+#
+# Pure-text package: ships only the package-owned base compose under
+# /usr/lib/wb-docker-app/echo/. The user layer is seeded at install time by the
+# helper, not by dpkg. Maintainer scripts (postinst/prerm) call the helper.
+
+%:
+	dh $@
