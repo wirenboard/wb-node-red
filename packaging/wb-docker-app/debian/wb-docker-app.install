@@ -1,0 +1,2 @@
+systemd/wb-docker-app@.service usr/lib/systemd/system/
+lib/wb-docker-app.sh usr/lib/wb-docker-app/lib/

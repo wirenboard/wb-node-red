@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+# Build rules for wb-docker-app (helper).
+#
+# Python helper built with pybuild/setuptools (entry point declared in
+# pyproject), plus the templated systemd unit and the shell library installed
+# verbatim via dh_install. The CLI entry point lands in /usr/bin/wb-docker-app.
+export PYBUILD_NAME=wb-docker-app
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
