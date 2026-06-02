@@ -1,2 +1,5 @@
 systemd/wb-docker-app@.service usr/lib/systemd/system/
 lib/wb-docker-app.sh usr/lib/wb-docker-app/lib/
+diag/wb-docker-app-diag-collect usr/lib/wb-docker-app/diag/
+diag/60wb-docker-app.conf usr/share/wb-diag-collect/conf.d/
+apt/52wb-docker-app-no-unattended etc/apt/apt.conf.d/
