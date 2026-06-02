@@ -41,10 +41,30 @@ class MqttProvisioner:
         self._mosquitto_dropin_dir = mosquitto_dropin_dir
 
     def provision(self) -> None:
+        listener = render_mosquitto_listener(
+            gateway=self._network.gateway, port=self._listener_port
+        )
+        after_docker = render_mosquitto_after_docker_dropin()
+        listener_path = self._mosquitto_conf_dir / "wb.conf"
+        after_docker_path = self._mosquitto_dropin_dir / "after-docker.conf"
+
+        # Idempotency: if the network is already present and both drop-ins are
+        # in place with the exact text we'd write, nothing changed — skip the
+        # network create AND the mosquitto restart. This makes a re-run (helper
+        # upgrade, or any repeat invocation) a no-op rather than a needless
+        # broker restart; mosquitto is restarted exactly once, at first install.
         inspect = self._runner.run(
             ["docker", "network", "inspect", "wb"], check=False
         )
-        if inspect.returncode != 0:
+        network_present = inspect.returncode == 0
+        if (
+            network_present
+            and _has_text(listener_path, listener)
+            and _has_text(after_docker_path, after_docker)
+        ):
+            return
+
+        if not network_present:
             self._runner.run(
                 [
                     "docker",
@@ -58,13 +78,12 @@ class MqttProvisioner:
                 ]
             )
 
-        listener = render_mosquitto_listener(
-            gateway=self._network.gateway, port=self._listener_port
-        )
-        (self._mosquitto_conf_dir / "wb.conf").write_text(listener)
-
-        (self._mosquitto_dropin_dir / "after-docker.conf").write_text(
-            render_mosquitto_after_docker_dropin()
-        )
+        listener_path.write_text(listener)
+        after_docker_path.write_text(after_docker)
 
         self._runner.run(["systemctl", "restart", "mosquitto"])
+
+
+def _has_text(path: Path, text: str) -> bool:
+    """True if ``path`` exists and already holds exactly ``text``."""
+    return path.exists() and path.read_text() == text

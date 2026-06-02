@@ -1,10 +1,12 @@
 #!/bin/sh
 # postinst for wb-docker-app (helper).
 #
-# The helper itself starts nothing: it only ships the templated unit, the CLI
-# and the shell library. Service packages (e.g. wb-node-red) call into it.
-# Here we just make systemd aware of the freshly installed template unit so
-# instances can be enabled by the service packages' maintainer scripts.
+# The helper itself starts no service: it ships the templated unit, the CLI and
+# the shell library, and owns the system-level MQTT connectivity (design.md
+# §3.7). Service packages (e.g. wb-node-red) call into the helper to install
+# themselves. Here we make systemd aware of the freshly installed template unit
+# so instances can be enabled by the service packages' maintainer scripts, then
+# provision MQTT connectivity ONCE — this is the helper's job, not per service.
 set -e
 
 case "$1" in
@@ -12,6 +14,12 @@ case "$1" in
 		if [ -d /run/systemd/system ]; then
 			systemctl daemon-reload || true
 		fi
+		# Container<->broker connectivity: dedicated docker network + mosquitto
+		# gateway listener, restarted once. Idempotent, so re-running on upgrade
+		# (or a no-op second invocation) does not re-create the network or
+		# restart mosquitto needlessly. Service installs never call this — they
+		# attach to the already-provisioned `wb` network.
+		wb-docker-app provision-mqtt
 		;;
 	abort-upgrade | abort-remove | abort-deconfigure) ;;
 	*)
