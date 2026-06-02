@@ -134,3 +134,61 @@ def test_parser_dispatches_install_with_an_app_argument():
     args = build_parser().parse_args(["install", "node-red"])
     assert args.command == "install"
     assert args.app == "node-red"
+
+
+# --- day-2 lifecycle verbs (issue #5) ---------------------------------------
+# status/logs/restart/update already exist in cli.py; these pin their behaviour.
+
+
+def test_status_queries_the_systemd_instance(paths):
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.status("node-red")
+
+    assert runner.issued("systemctl", "status",
+                         "wb-docker-app@node-red.service")
+
+
+def test_restart_restarts_the_systemd_instance(paths):
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.restart("node-red")
+
+    assert runner.issued("systemctl", "restart",
+                         "wb-docker-app@node-red.service")
+
+
+def test_logs_tails_the_instance_journal(paths):
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.logs("node-red")
+
+    # journalctl scoped to the instance unit, bounded tail.
+    assert runner.issued("journalctl", "-u",
+                         "wb-docker-app@node-red.service", "-n", "200")
+
+
+def test_update_pulls_the_new_image_and_recreates_the_container(paths):
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.update("node-red")
+
+    # explicit upgrade: pull the bumped tag then up -d to recreate.
+    assert runner.issued("docker", "compose", "pull")
+    assert runner.issued("docker", "compose", "up", "-d")
+
+
+def test_parser_dispatches_each_lifecycle_verb_with_an_app_argument():
+    for verb in ("status", "logs", "restart", "update"):
+        args = build_parser().parse_args([verb, "node-red"])
+        assert args.command == verb
+        assert args.app == "node-red"
+
+
+def test_parser_dispatches_list_without_an_app_argument():
+    args = build_parser().parse_args(["list"])
+    assert args.command == "list"

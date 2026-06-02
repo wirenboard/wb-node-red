@@ -1,3 +1,15 @@
+wb-docker-app (0.2.0) stable; urgency=medium
+
+  * Packaging tails for day-2 lifecycle & observability (issue #5):
+    - apt.conf.d drop-in excluding wb-docker-app and wb-* service packages
+      from unattended-upgrades (upgrades stay explicit);
+    - wb-diag-collect drop-in + collector script capturing each service's
+      systemctl status and recent journal logs into the diagnostic archive;
+    - documented downgrade/rollback (apt downgrade) and the pre-major-upgrade
+      data-backup warning (design.md §3.11.1).
+
+ -- Wiren Board Team <info@wirenboard.com>  Mon, 02 Jun 2026 00:00:00 +0000
+
 wb-docker-app (0.1.0) stable; urgency=medium
 
   * Initial packaging: templated systemd unit wb-docker-app@.service, the
