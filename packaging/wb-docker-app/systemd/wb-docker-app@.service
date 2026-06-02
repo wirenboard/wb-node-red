@@ -19,8 +19,15 @@ Type=oneshot
 RemainAfterExit=yes
 Environment=WB_BASE=/usr/lib/wb-docker-app/%i/docker-compose.yml
 Environment=WB_OVERRIDE=/mnt/data/wb-docker-apps/%i/docker-compose.override.yml
-ExecStart=/usr/bin/docker compose -p wb-%i -f ${WB_BASE} -f ${WB_OVERRIDE} up -d
-ExecStop=/usr/bin/docker compose -p wb-%i -f ${WB_BASE} -f ${WB_OVERRIDE} down
+# The allocated WB_INTERNAL_PORT is seeded into the per-app .env under the
+# user-layer data dir, NOT next to the base compose. compose auto-loads the
+# .env from the FIRST -f file's directory (the read-only base layer), so we
+# MUST point it at the seeded .env explicitly with --env-file — otherwise every
+# boot/start/restart ignores the allocation and publishes the compose default
+# port (design.md §3.6, must match compose.py / cli.py ComposeRunner).
+Environment=WB_ENV=/mnt/data/wb-docker-apps/%i/.env
+ExecStart=/usr/bin/docker compose -p wb-%i --env-file ${WB_ENV} -f ${WB_BASE} -f ${WB_OVERRIDE} up -d
+ExecStop=/usr/bin/docker compose -p wb-%i --env-file ${WB_ENV} -f ${WB_BASE} -f ${WB_OVERRIDE} down
 
 [Install]
 WantedBy=multi-user.target

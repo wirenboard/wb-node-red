@@ -34,6 +34,11 @@ def _compose(runner):
         ),
         project_name="node-red",
         runner=runner,
+        # The allocated WB_INTERNAL_PORT lives in the seeded .env under the
+        # user-layer data dir, which compose does NOT auto-load (it derives the
+        # project dir from the first -f file's dir, the read-only base layer);
+        # the wrapper must pass it explicitly with --env-file.
+        env_file=Path("/mnt/data/wb-docker-apps/node-red/.env"),
     )
 
 
@@ -48,6 +53,8 @@ def test_up_issues_compose_up_detached_with_base_then_override():
             "compose",
             "-p",
             "node-red",
+            "--env-file",
+            "/mnt/data/wb-docker-apps/node-red/.env",
             "-f",
             "/usr/lib/wb-docker-app/node-red/docker-compose.yml",
             "-f",
@@ -64,6 +71,8 @@ def _prefix():
         "compose",
         "-p",
         "node-red",
+        "--env-file",
+        "/mnt/data/wb-docker-apps/node-red/.env",
         "-f",
         "/usr/lib/wb-docker-app/node-red/docker-compose.yml",
         "-f",

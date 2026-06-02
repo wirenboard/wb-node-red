@@ -180,6 +180,35 @@ def test_two_apps_get_distinct_non_colliding_nginx_blocks(helper, paths):
     ).group(1)
 
 
+def test_compose_up_loads_each_apps_seeded_env_file(helper, paths):
+    # The allocated WB_INTERNAL_PORT is seeded into /mnt/data/.../<app>/.env,
+    # but compose auto-loads .env from the FIRST -f file's directory — the
+    # read-only base layer under /usr/lib — NOT that data dir. Unless the
+    # orchestrator (and the systemd unit) pass --env-file explicitly, every
+    # up/down ignores the allocation and publishes the compose default port,
+    # silently mismatching the nginx block rendered from `compose config`.
+    helper.install("node-red")
+    helper.install("echo")
+
+    runner = helper.runner
+
+    def assert_env_file(app: str) -> None:
+        env_path = str(paths.data_dir / app / ".env")
+        ups = [
+            c
+            for c in runner.calls
+            if c[:4] == ["docker", "compose", "-p", f"wb-{app}"]
+            and "up" in c
+        ]
+        assert ups, f"no compose up issued for {app}"
+        for argv in ups:
+            assert "--env-file" in argv, argv
+            assert argv[argv.index("--env-file") + 1] == env_path, argv
+
+    assert_env_file("node-red")
+    assert_env_file("echo")
+
+
 def test_installing_apps_never_reruns_one_time_mqtt_provisioning(helper):
     helper.install("node-red")
     helper.install("echo")

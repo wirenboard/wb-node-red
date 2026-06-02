@@ -104,6 +104,10 @@ class Helper:
             override_path=self.paths.data_dir / app / "docker-compose.override.yml",
             project_name=f"wb-{app}",
             runner=self.runner,
+            # The allocated WB_INTERNAL_PORT lives in the seeded .env under the
+            # user-layer data dir, NOT next to the base compose; point compose
+            # at it explicitly so up/down honour the allocation (design.md §3.6).
+            env_file=self.paths.data_dir / app / ".env",
         )
 
     def install(self, app: str) -> None:
