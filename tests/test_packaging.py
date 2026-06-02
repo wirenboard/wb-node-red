@@ -30,6 +30,7 @@ REPO = Path(__file__).resolve().parent.parent
 PKG = REPO / "packaging"
 HELPER = PKG / "wb-docker-app"
 SERVICE = PKG / "wb-node-red"
+ECHO = PKG / "wb-echo"
 
 BASE_COMPOSE = SERVICE / "compose" / "node-red" / "docker-compose.yml"
 
@@ -38,6 +39,8 @@ MAINTAINER_SCRIPTS = [
     HELPER / "lib" / "wb-docker-app.sh",
     SERVICE / "debian" / "postinst",
     SERVICE / "debian" / "prerm",
+    ECHO / "debian" / "postinst",
+    ECHO / "debian" / "prerm",
 ]
 
 
@@ -85,6 +88,35 @@ def test_node_red_control_fields_and_dependencies():
     deps = para["Depends"]
     assert "docker-ce" in deps
     assert "wb-docker-app" in deps
+
+
+def test_echo_control_fields_and_dependencies():
+    # The second service (issue #7) is shaped exactly like wb-node-red: same
+    # arch, same dependency on the shared helper + docker-ce.
+    para = _binary_paragraph(ECHO / "debian" / "control", "wb-echo")
+    assert para["Architecture"] == "all"
+    deps = para["Depends"]
+    assert "docker-ce" in deps
+    assert "wb-docker-app" in deps
+
+
+def test_echo_package_is_template_only_no_duplicated_lifecycle_logic():
+    # "By template": the whole package is base compose + wb.* labels + thin sh
+    # glue. It must NOT ship any Python, systemd unit, or shell library — those
+    # live once in the shared helper. Maintainer scripts only source the helper
+    # library and call its functions; they carry no compose/systemd/nginx logic.
+    shipped = [p for p in ECHO.rglob("*") if p.is_file()]
+    assert not any(p.suffix == ".py" for p in shipped)
+    assert not any(p.suffix == ".service" for p in shipped)
+    assert not any(p.name.endswith(".sh") for p in shipped)
+
+    for script in (ECHO / "debian" / "postinst", ECHO / "debian" / "prerm"):
+        text = script.read_text()
+        # delegates to the shared library, names no lifecycle primitives itself
+        assert "wb-docker-app.sh" in text
+        assert "docker compose" not in text
+        assert "systemctl" not in text
+        assert "nginx" not in text
 
 
 def test_helper_declares_cli_entry_point_in_pyproject():
@@ -195,6 +227,21 @@ def test_node_red_deb_carries_package_owned_base_compose(tmp_path):
     assert "usr/lib/wb-docker-app/node-red/docker-compose.yml" in contents
 
 
+@pytest.mark.skipif(
+    shutil.which("dpkg-deb") is None, reason="dpkg-deb not available"
+)
+def test_echo_deb_carries_package_owned_base_compose(tmp_path):
+    deb = _build_deb(ECHO, "wb-echo", tmp_path)
+
+    assert _deb_field(deb, "Package") == "wb-echo"
+    assert _deb_field(deb, "Architecture") == "all"
+
+    contents = _deb_contents(deb)
+    # base compose is package-owned under /usr/lib (design.md §3.6, issue #2),
+    # under its own app slug so it never collides with node-red's.
+    assert "usr/lib/wb-docker-app/echo/docker-compose.yml" in contents
+
+
 # --- shellcheck on maintainer scripts ---------------------------------------
 
 
@@ -242,3 +289,33 @@ def test_base_compose_config_parses_wb_labels(tmp_path):
     assert labels["wb.title"] == "Node-RED"
     assert labels["wb.proxy.port"] == "1880"
     assert labels["wb.proxy.role"] == "admin"
+
+
+@pytest.mark.skipif(
+    shutil.which("docker") is None, reason="docker not available"
+)
+def test_echo_base_compose_config_parses_wb_labels(tmp_path):
+    workdir = tmp_path / "echo"
+    workdir.mkdir()
+    shutil.copy(
+        ECHO / "compose" / "echo" / "docker-compose.yml",
+        workdir / "docker-compose.yml",
+    )
+
+    result = subprocess.run(
+        ["docker", "compose", "-f", "docker-compose.yml",
+         "config", "--format", "json"],
+        cwd=workdir,
+        env={"PATH": "/usr/bin:/bin", "WB_INTERNAL_PORT": "28080"},
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"docker compose config unavailable: {result.stderr}")
+
+    config = json.loads(result.stdout)
+    (service,) = config["services"].values()
+    labels = service["labels"]
+    # distinct public port from node-red's 1880 — no nginx collision
+    assert labels["wb.app"] == "echo"
+    assert labels["wb.proxy.port"] == "8080"
