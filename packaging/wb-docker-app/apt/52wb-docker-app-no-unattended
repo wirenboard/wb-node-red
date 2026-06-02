@@ -21,4 +21,5 @@
 Unattended-Upgrade::Package-Blacklist {
 	"wb-docker-app$";
 	"wb-node-red$";
+	"wb-echo$";
 };

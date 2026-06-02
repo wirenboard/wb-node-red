@@ -52,6 +52,7 @@ def test_apt_conf_blacklists_helper_and_service_packages():
     # anchored with `$` so they match only themselves.
     assert '"wb-docker-app$"' in text
     assert '"wb-node-red$"' in text
+    assert '"wb-echo$"' in text
 
 
 def test_apt_conf_lands_in_apt_conf_d():
