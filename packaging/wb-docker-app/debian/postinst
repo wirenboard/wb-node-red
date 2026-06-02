@@ -1,0 +1,25 @@
+#!/bin/sh
+# postinst for wb-docker-app (helper).
+#
+# The helper itself starts nothing: it only ships the templated unit, the CLI
+# and the shell library. Service packages (e.g. wb-node-red) call into it.
+# Here we just make systemd aware of the freshly installed template unit so
+# instances can be enabled by the service packages' maintainer scripts.
+set -e
+
+case "$1" in
+	configure)
+		if [ -d /run/systemd/system ]; then
+			systemctl daemon-reload || true
+		fi
+		;;
+	abort-upgrade | abort-remove | abort-deconfigure) ;;
+	*)
+		echo "postinst called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

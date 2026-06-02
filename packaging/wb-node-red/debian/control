@@ -1,0 +1,19 @@
+Source: wb-node-red
+Section: utils
+Priority: optional
+Maintainer: Wiren Board Team <info@wirenboard.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: wb-node-red
+Architecture: all
+Depends: ${misc:Depends}, docker-ce, wb-docker-app
+Description: Node-RED service for Wiren Board controllers
+ Installs Node-RED as a docker-compose service managed by wb-docker-app.
+ Ships the package-owned base docker-compose.yml (with the wb.* labels) to
+ /usr/lib/wb-docker-app/node-red/. The thin maintainer scripts call into the
+ shared helper: postinst runs "wb-docker-app install node-red" (which seeds the
+ user layer under /mnt/data/wb-docker-apps/node-red/, pulls the image, brings
+ the container up and enables it under the templated systemd unit) and prerm
+ runs "wb-docker-app remove node-red".
