@@ -45,9 +45,14 @@ class FakeRunner:
         argv = list(argv)
         self.calls.append(argv)
         stdout = ""
+        returncode = 0
         if "config" in argv:
             stdout = json.dumps(COMPOSE_CONFIG)
-        return CommandResult(argv=tuple(argv), returncode=0, stdout=stdout)
+        # On a clean system the `wb` network is absent, so inspect fails — this
+        # lets provision_mqtt exercise the create path.
+        if tuple(argv[:3]) == ("docker", "network", "inspect"):
+            returncode = 1
+        return CommandResult(argv=tuple(argv), returncode=returncode, stdout=stdout)
 
     def issued(self, *needles):
         """True if some recorded call contains all the given substrings."""
@@ -63,6 +68,8 @@ def paths(tmp_path):
         data_dir=tmp_path / "mnt/data/wb-docker-apps",
         nginx_includes=tmp_path / "etc/nginx/includes/default.wb.d",
         port_registry=tmp_path / "var/lib/wb-docker-app/ports.json",
+        mosquitto_conf_dir=tmp_path / "etc/mosquitto/conf.d",
+        mosquitto_dropin_dir=tmp_path / "etc/systemd/system/mosquitto.service.d",
     )
 
 
@@ -228,3 +235,38 @@ def test_parser_dispatches_each_lifecycle_verb_with_an_app_argument():
 def test_parser_dispatches_list_without_an_app_argument():
     args = build_parser().parse_args(["list"])
     assert args.command == "list"
+
+
+def test_parser_dispatches_provision_mqtt_without_an_app_argument():
+    args = build_parser().parse_args(["provision-mqtt"])
+    assert args.command == "provision-mqtt"
+
+
+def test_provision_mqtt_creates_the_network_and_restarts_mosquitto_once(paths):
+    # MQTT connectivity is provisioned by the helper at install time: it creates
+    # the `wb` docker network and restarts mosquitto exactly once (design.md §3.7).
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.provision_mqtt()
+
+    assert runner.issued("docker", "network", "create", "wb")
+    restarts = [
+        c for c in runner.calls if c == ["systemctl", "restart", "mosquitto"]
+    ]
+    assert restarts == [["systemctl", "restart", "mosquitto"]]
+    # drop-ins written under the configured /etc dirs
+    assert (paths.mosquitto_conf_dir / "wb.conf").exists()
+    assert (paths.mosquitto_dropin_dir / "after-docker.conf").exists()
+
+
+def test_a_service_install_never_touches_mosquitto(paths):
+    # Provisioning is the helper's job, run once at helper install — NOT per
+    # service. Installing a (second) service must never restart mosquitto.
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.install("node-red")
+
+    assert not runner.issued("systemctl", "restart", "mosquitto")
+    assert not runner.issued("docker", "network", "create")
