@@ -85,6 +85,42 @@ def test_install_writes_a_gated_nginx_block_and_brings_the_service_up(paths):
                          "wb-docker-app@node-red.service")
 
 
+def test_install_tests_the_nginx_config_before_reloading_it(paths):
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.install("node-red")
+
+    # A bad server-block must never reach a live reload: `nginx -t` gates the
+    # reload, and a failing test aborts before `systemctl reload nginx`.
+    test_idx = runner.calls.index(["nginx", "-t"])
+    reload_idx = runner.calls.index(["systemctl", "reload", "nginx"])
+    assert test_idx < reload_idx
+
+
+def test_install_aborts_the_reload_when_the_nginx_config_test_fails(paths):
+    class BadConfigRunner(FakeRunner):
+        def run(self, argv, *, check=True, input=None):
+            result = super().run(argv, check=check, input=input)
+            if list(argv) == ["nginx", "-t"]:
+                from wb_docker_app.runner import CommandError, CommandResult
+
+                raise CommandError(
+                    CommandResult(argv=tuple(argv), returncode=1,
+                                  stderr="nginx: configuration file test failed")
+                )
+            return result
+
+    runner = BadConfigRunner()
+    helper = Helper(runner, paths)
+
+    with pytest.raises(Exception):
+        helper.install("node-red")
+
+    # the reload must not have been issued after a failing config test.
+    assert ["systemctl", "reload", "nginx"] not in runner.calls
+
+
 def test_remove_disables_the_unit_and_deletes_the_nginx_block(paths):
     runner = FakeRunner()
     helper = Helper(runner, paths)

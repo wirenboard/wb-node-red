@@ -86,7 +86,7 @@ class Helper:
         block = render_server_block(descriptor)
         self.paths.nginx_includes.mkdir(parents=True, exist_ok=True)
         (self.paths.nginx_includes / f"{app}.conf").write_text(block)
-        self.runner.run(["systemctl", "reload", "nginx"])
+        self._reload_nginx()
 
         self.systemd.enable_now(app)
 
@@ -96,8 +96,18 @@ class Helper:
         block = self.paths.nginx_includes / f"{app}.conf"
         if block.exists():
             block.unlink()
-            self.runner.run(["systemctl", "reload", "nginx"])
+            self._reload_nginx()
         self.allocator.release(app)
+
+    def _reload_nginx(self) -> None:
+        """Validate the config, then reload — never reload a broken config.
+
+        ``nginx -t`` exits non-zero on a bad config; the checked run raises
+        before the reload so a malformed server-block can't take the whole
+        proxy (and thus the WB web UI) down (design.md §3.8, §3.9).
+        """
+        self.runner.run(["nginx", "-t"])
+        self.runner.run(["systemctl", "reload", "nginx"])
 
     def update(self, app: str) -> None:
         compose = self._compose(app)
