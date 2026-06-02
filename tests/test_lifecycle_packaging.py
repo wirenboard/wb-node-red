@@ -30,11 +30,15 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 HELPER = REPO / "packaging" / "wb-docker-app"
+ECHO = REPO / "packaging" / "wb-echo"
 
 APT_CONF = HELPER / "apt" / "52wb-docker-app-no-unattended"
 DIAG_DROPIN = HELPER / "diag" / "60wb-docker-app.conf"
 DIAG_SCRIPT = HELPER / "diag" / "wb-docker-app-diag-collect"
 INSTALL = HELPER / "debian" / "wb-docker-app.install"
+
+ECHO_APT_CONF = ECHO / "apt" / "52wb-echo-no-unattended"
+ECHO_INSTALL = ECHO / "debian" / "wb-echo.install"
 
 
 # --- unattended-upgrades exclusion ------------------------------------------
@@ -48,16 +52,29 @@ def test_apt_conf_blacklists_helper_and_service_packages():
     text = APT_CONF.read_text()
     # The directive unattended-upgrades reads to skip packages.
     assert "Unattended-Upgrade::Package-Blacklist" in text
-    # The shared helper and the node-red service package are excluded, each
-    # anchored with `$` so they match only themselves.
+    # The shared helper and the in-tree node-red service package are excluded,
+    # each anchored with `$` so they match only themselves.
     assert '"wb-docker-app$"' in text
     assert '"wb-node-red$"' in text
-    assert '"wb-echo$"' in text
 
 
 def test_apt_conf_lands_in_apt_conf_d():
     mappings = INSTALL.read_text()
     assert "apt/52wb-docker-app-no-unattended etc/apt/apt.conf.d/" in mappings
+
+
+def test_echo_ships_its_own_unattended_upgrades_dropin():
+    # Per design §3.11.1, a service package whose slug is not already covered by
+    # an end-anchored helper entry ships its own apt.conf.d drop-in. wb-echo
+    # (matched by neither "wb-docker-app$" nor "wb-node-red$") must carry one,
+    # and it must land in etc/apt/apt.conf.d/ so unattended-upgrades reads it.
+    dropin = ECHO_APT_CONF
+    assert dropin.is_file()
+    text = dropin.read_text()
+    assert "Unattended-Upgrade::Package-Blacklist" in text
+    assert '"wb-echo$"' in text
+    mappings = ECHO_INSTALL.read_text()
+    assert "apt/52wb-echo-no-unattended etc/apt/apt.conf.d/" in mappings
 
 
 # --- wb-diag-collect drop-in + collector ------------------------------------

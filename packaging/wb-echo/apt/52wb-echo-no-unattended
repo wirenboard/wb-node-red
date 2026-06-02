@@ -1,0 +1,14 @@
+// wb-echo: keep this containerized service off unattended-upgrades
+// (design.md §3.11 / §3.11.1, issue #5).
+//
+// Per the convention, the shared helper (wb-docker-app) blacklists itself and
+// the in-tree service packages, and "каждый новый пакет-сервис при
+// необходимости добавляет своё имя аналогичным drop-in'ом, если слаг не покрыт
+// уже имеющейся записью". The helper's entries are end-anchored Python regexes
+// (`wb-docker-app$`, `wb-node-red$`), so `wb-echo` is NOT covered by any of
+// them. wb-echo therefore ships its own drop-in here so unattended-upgrades
+// never auto-upgrades it; the container is upgraded only on purpose via an
+// explicit `apt upgrade wb-echo` (whose postinst runs `compose pull` + `up -d`).
+Unattended-Upgrade::Package-Blacklist {
+	"wb-echo$";
+};

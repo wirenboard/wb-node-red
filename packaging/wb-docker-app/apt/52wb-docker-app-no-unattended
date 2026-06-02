@@ -15,11 +15,12 @@
 // scope to the ones that ship a base compose under this helper rather than
 // blacklisting all of `wb-*` (which would freeze unrelated WB system packages).
 //
-// Shipped by the wb-docker-app helper package (one per system). Service
-// packages add their own name here via a matching drop-in if their slug does
-// not already match an entry below.
+// Shipped by the wb-docker-app helper package (one per system): it blacklists
+// itself and the in-tree node-red service package. Because the entries are
+// end-anchored, a new service package whose slug does not already match an
+// entry below ships its own matching drop-in (e.g. wb-echo ships
+// etc/apt/apt.conf.d/52wb-echo-no-unattended with "wb-echo$").
 Unattended-Upgrade::Package-Blacklist {
 	"wb-docker-app$";
 	"wb-node-red$";
-	"wb-echo$";
 };
