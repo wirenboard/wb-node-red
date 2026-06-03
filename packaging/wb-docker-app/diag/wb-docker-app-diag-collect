@@ -24,7 +24,7 @@ say() {
 apps=""
 if command -v docker >/dev/null 2>&1; then
 	apps=$(docker ps --filter label=wb.app \
-		--format '{{ index .Labels "wb.app" }}' 2>/dev/null \
+		--format '{{.Label "wb.app"}}' 2>/dev/null \
 		| sort -u)
 fi
 

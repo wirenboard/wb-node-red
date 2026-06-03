@@ -191,3 +191,54 @@ def test_collector_runs_and_reports_no_apps_when_docker_is_absent(tmp_path):
     )
     assert result.returncode == 0
     assert "installed services" in result.stdout
+
+
+def test_collector_discovers_apps_via_valid_docker_format_template(tmp_path):
+    # Regression for the broken `--format '{{ index .Labels "wb.app" }}'`
+    # template: in `docker ps --format` Go context `.Labels` is a
+    # comma-separated STRING, so `index .Labels ...` fails template execution
+    # and discovery silently came back empty. Stub a `docker` that mimics that
+    # Go-template semantics — it errors on the `index .Labels` form and only
+    # emits app names for the correct `.Label "wb.app"` placeholder the CLI
+    # uses — and assert the collector actually surfaces the running app.
+    if shutil.which("sh") is None:
+        pytest.skip("no POSIX sh")
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    docker = bindir / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        "# Find the --format argument value.\n"
+        "fmt=\"\"\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  case \"$1\" in\n"
+        "    --format) fmt=\"$2\"; shift 2;;\n"
+        "    *) shift;;\n"
+        "  esac\n"
+        "done\n"
+        "case \"$fmt\" in\n"
+        "  *'index .Labels'*)\n"
+        "    echo 'failed to execute template: error calling index:"
+        " cannot index slice/array with type string' >&2\n"
+        "    exit 1;;\n"
+        "  *'.Label \"wb.app\"'*)\n"
+        "    echo node-red\n"
+        "    exit 0;;\n"
+        "  *) exit 0;;\n"
+        "esac\n"
+    )
+    docker.chmod(0o755)
+    # Keep the real system bins (sort/sed/awk) on PATH but shadow docker with
+    # our stub by putting bindir first; drop any real docker/systemctl so only
+    # the stub answers and systemd discovery stays empty.
+    syspath = ":".join(p for p in os.environ.get("PATH", "").split(":") if p)
+    env = {"PATH": f"{bindir}:{syspath}"}
+    result = subprocess.run(
+        ["/bin/sh", str(DIAG_SCRIPT)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, **env},
+    )
+    assert result.returncode == 0
+    assert "node-red" in result.stdout
+    assert "(no running wb-docker-app containers" not in result.stdout
