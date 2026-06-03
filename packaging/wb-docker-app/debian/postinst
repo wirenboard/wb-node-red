@@ -1,0 +1,43 @@
+#!/bin/sh
+# postinst for wb-docker-app (helper).
+#
+# The helper itself starts no service: it ships the templated unit, the CLI and
+# the shell library, and owns the system-level MQTT connectivity (design.md
+# §3.7). Service packages (e.g. wb-node-red) call into the helper to install
+# themselves. Here we make systemd aware of the freshly installed template unit
+# so instances can be enabled by the service packages' maintainer scripts, then
+# provision MQTT connectivity ONCE — this is the helper's job, not per service.
+set -e
+
+case "$1" in
+	configure)
+		if [ -d /run/systemd/system ]; then
+			systemctl daemon-reload || true
+		fi
+		# Container<->broker connectivity: dedicated docker network + mosquitto
+		# gateway listener, restarted once. Idempotent, so re-running on upgrade
+		# (or a no-op second invocation) does not re-create the network or
+		# restart mosquitto needlessly. Service installs never call this — they
+		# attach to the already-provisioned `wb` network.
+		wb-docker-app provision-mqtt
+		# Make containerized services first-class in the diagnostic archive
+		# (design.md §3.5.1, issue #5). The released wb-diag-collect reads
+		# only its single main config and has no conf.d merge, so the shipped
+		# conf.d drop-in alone is inert; register the collector command into
+		# that main config here. Idempotent, and a no-op if wb-diag-collect
+		# is not installed. That config is owned by wb-diag-collect and is not a
+		# conffile, so a later `apt upgrade wb-diag-collect` reverts it — the
+		# shipped apt.conf.d/53wb-docker-app-reg-diag Post-Invoke hook re-runs
+		# this after every apt run to heal the entry back in.
+		wb-docker-app register-diag
+		;;
+	abort-upgrade | abort-remove | abort-deconfigure) ;;
+	*)
+		echo "postinst called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

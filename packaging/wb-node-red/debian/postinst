@@ -1,0 +1,25 @@
+#!/bin/sh
+# postinst for wb-node-red (design.md §4).
+#
+# Thin glue: source the shared library and delegate the whole install flow to
+# the helper. Idempotent — wb-docker-app install is safe to re-run on upgrade.
+set -e
+
+LIB=/usr/lib/wb-docker-app/lib/wb-docker-app.sh
+
+case "$1" in
+	configure)
+		# shellcheck source=/dev/null
+		. "$LIB"
+		wb_docker_app_install node-red
+		;;
+	abort-upgrade | abort-remove | abort-deconfigure) ;;
+	*)
+		echo "postinst called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

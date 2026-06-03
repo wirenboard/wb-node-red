@@ -267,6 +267,72 @@ Node-RED/HA может сломать пользовательские flows/к�
 если образ ещё в кэше/registry); в доке предупредить: «бэкап
 `/mnt/data/wb-docker-apps/<app>/data` перед мажором».
 
+#### 3.11.1 Day-2: эксплуатация, наблюдаемость, откат (issue #5)
+
+Сервис ведёт себя как родной WB-сервис, апгрейд — только осознанно.
+
+**CLI-глаголы хелпера** (тонкая обёртка над модулями A–H). `list` и `status`
+интроспектят runtime по меткам `wb.*` контейнеров (self-describing, без
+отдельного стейта); остальные оперируют именованным приложением:
+
+```
+wb-docker-app list                 # установленные docker-сервисы (по меткам)
+wb-docker-app status   <app>       # systemctl status инстанса
+wb-docker-app logs     <app>       # journalctl -u wb-docker-app@<app> -n 200
+wb-docker-app restart  <app>       # systemctl restart инстанса
+wb-docker-app update   <app>       # compose pull + up -d (пересоздать контейнер)
+```
+
+Те же действия родным идиомом: `systemctl status/restart
+wb-docker-app@<app>` (модуль G).
+
+**Исключение из unattended-upgrades.** Хелпер кладёт
+`/etc/apt/apt.conf.d/52wb-docker-app-no-unattended` с
+`Unattended-Upgrade::Package-Blacklist` для `wb-docker-app` и пакетов
+сервисов (`wb-node-red`, …). Авто-апгрейд их не трогает — обновление только
+явным `apt upgrade wb-<сервис>` (его postinst делает `compose pull` + `up
+-d`). Каждый новый пакет-сервис при необходимости добавляет своё имя
+аналогичным drop-in'ом, если слаг не покрыт уже имеющейся записью.
+
+**Наблюдаемость в `wb-diag-collect`.** Хелпер кладёт drop-in
+`/usr/share/wb-diag-collect/conf.d/60wb-docker-app.conf` и сборщик
+`/usr/lib/wb-docker-app/diag/wb-docker-app-diag-collect`. Сборщик по меткам
+`wb.app` (тот же источник, что у CLI) обходит инстансы и пишет в архив
+`systemctl status` и последние логи каждого сервиса; журналы
+`wb-docker-app@<app>.service` и так попадают под glob `wb-*.service` основного
+конфига. Состояние и логи контейнерных сервисов оказываются в диагностическом
+архиве рядом с родными WB-сервисами.
+
+Важная оговорка: выпущенный `wb-diag-collect` читает ТОЛЬКО единственный
+главный конфиг (`/usr/share/wb-diag-collect/wb-diag-collect.conf`, upstream
+`DEFAULT_CONF_PATH`) и не сливает `conf.d` — то есть сам по себе drop-in не
+читается. Поэтому postinst хелпера регистрирует запись `commands` сборщика
+прямо в этот главный конфиг (`wb-docker-app register-diag`), а prerm удаляет её
+при удалении пакета (`deregister-diag`); слияние идемпотентно и трогает только
+нашу запись (см. `src/wb_docker_app/diag.py`). Drop-in остаётся каноническим
+описанием регистрируемой записи и становится живым конфигом напрямую, как
+только в upstream появится слияние `conf.d` — тогда слияние в postinst
+отключается.
+
+**Откат / downgrade.** Тег образа пинится к версии пакета, поэтому откат
+сервиса — это откат пакета. Перед мажорным апгрейдом — бэкап данных:
+
+```
+# ⚠️ ПЕРЕД МАЖОРНЫМ АПГРЕЙДОМ сделать бэкап данных приложения:
+tar czf /mnt/data/wb-docker-apps/<app>/data-backup-$(date +%F).tgz \
+        -C /mnt/data/wb-docker-apps/<app> data
+
+# Откат на предыдущую версию пакета (тянет прежний тег образа):
+apt-get install wb-<сервис>=<предыдущая-версия>   # «apt downgrade»
+# затем хелпер/postinst пересоздаст контейнер на старом образе:
+wb-docker-app update <app>
+```
+
+`apt downgrade` работает, пока прежний образ ещё в локальном кэше Docker или в
+registry. Мажор может мигрировать данные вперёд-несовместимо — поэтому бэкап
+`/mnt/data/wb-docker-apps/<app>/data` обязателен перед мажорным апгрейдом:
+после форвардной миграции откат пакета вернёт старый код, но не старые данные.
+
 ### 3.12 Нейминг и версионирование
 
 - Имена пакетов: хелпер `wb-docker-app`, сервисы `wb-<service>`.

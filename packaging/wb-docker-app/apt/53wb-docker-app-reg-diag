@@ -1,0 +1,21 @@
+// wb-docker-app: re-register the wb-diag-collect collector after every apt run
+// (design.md §3.5.1, issue #5; register-diag review finding).
+//
+// wb-diag-collect's main config (/usr/share/wb-diag-collect/wb-diag-collect.conf)
+// is NOT a dpkg conffile — it lives under /usr/share and is owned by the
+// wb-diag-collect package. So an unrelated `apt upgrade wb-diag-collect`
+// silently overwrites it back to the package default and drops the collector
+// `commands` entry our postinst registered, with no maintainer script of ours
+// firing to notice. Without this hook the diag integration (issue #5 AC)
+// silently stops working after the next diag-collect upgrade.
+//
+// This DPkg::Post-Invoke runs after every dpkg/apt transaction and re-asserts
+// our entry. `wb-docker-app register-diag` is idempotent and a no-op when the
+// entry is already present or when wb-diag-collect is not installed, so the
+// steady-state cost is one cheap file read; it only rewrites the config on the
+// transaction that just reverted it. Guarded on the CLI being present (the hook
+// outlives nothing it depends on, but be defensive during our own removal) and
+// `|| true` so a hiccup here never fails an apt run.
+DPkg::Post-Invoke {
+	"if [ -x /usr/bin/wb-docker-app ]; then /usr/bin/wb-docker-app register-diag || true; fi";
+};

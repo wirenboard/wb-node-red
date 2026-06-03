@@ -35,7 +35,12 @@ upgrades happen only on purpose.
       recreates the container; an unrelated `apt upgrade` / unattended run does
       **not** touch it.
 - [ ] `systemctl status/restart wb-docker-app@node-red` works (module G).
-- [ ] Service status and logs appear in the `wb-diag-collect` archive.
+- [x] Service status and logs appear in the `wb-diag-collect` archive. The
+      released wb-diag-collect reads only its single main config (no conf.d
+      merge), so the helper's postinst registers the collector `commands` entry
+      into that main config (prerm removes it on uninstall); the shipped
+      `conf.d` drop-in is the canonical description and the forward path for
+      when upstream gains a merge.
 - [ ] Downgrade path and pre-major-upgrade backup are documented.
 
 ## Blocked by

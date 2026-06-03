@@ -1,0 +1,7 @@
+wb-node-red (0.1.0) stable; urgency=medium
+
+  * Initial packaging: base docker-compose.yml with wb.* labels installed to
+    /usr/lib/wb-docker-app/node-red/; thin postinst/prerm calling into
+    wb-docker-app (issue #1, walking skeleton).
+
+ -- Wiren Board Team <info@wirenboard.com>  Tue, 02 Jun 2026 00:00:00 +0000
