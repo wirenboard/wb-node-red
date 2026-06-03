@@ -1,0 +1,656 @@
+{
+  "slug": "wb-docker-apps",
+  "mode": "full-auto",
+  "integrationBranch": "pipeline/wb-docker-apps",
+  "mainRef": "master",
+  "completed": [
+    "1",
+    "5",
+    "7",
+    "3",
+    "4"
+  ],
+  "implemented": [
+    {
+      "id": "1",
+      "status": "done",
+      "summary": "Built Debian packaging for both packages on a worktree. wb-docker-app (helper) ships the templated systemd unit wb-docker-app@.service, the Python CLI (pyproject entry point, built via pybuild) and a new shell library; wb-node-red (Architecture: all, Depends: docker-ce, wb-docker-app) ships a package-owned base docker-compose.yml with the wb.* labels under /usr/lib and thin sh postinst/prerm that call into the helper, which seeds the user layer to /mnt/data via the existing seeding core (issue #2 layout). Added rootless packaging smoke tests; whole suite green (59 passed)."
+    },
+    {
+      "id": "5",
+      "status": "done",
+      "summary": "Shipped issue #5 packaging tails on branch pipeline/wb-docker-apps-issue-5: confirmed the CLI verbs (status/logs/restart/update/list) already exist in cli.py and added behaviour tests for them; added an apt.conf.d drop-in excluding wb-docker-app and wb-* service packages from unattended-upgrades, a wb-diag-collect drop-in + collector script capturing each service's systemctl status and recent logs, and documented the apt-downgrade rollback path plus the pre-major-upgrade data-backup warning. 76 tests pass (1 skip: PyYAML not in venv)."
+    },
+    {
+      "id": "7",
+      "status": "done",
+      "summary": "Added wb-echo, a second service package built purely from a base docker-compose.yml + wb.* labels + thin sh maintainer scripts that reuse the shared wb-docker-app helper with no duplicated lifecycle logic. Proved orchestrator-level isolation (distinct loopback ports, distinct non-colliding nginx blocks, provisioner H not re-run per service, removal leaves the other intact) and extended packaging tests. Full suite: 69 passed (was 59)."
+    },
+    {
+      "id": "3",
+      "status": "done",
+      "summary": "Confirmed the pure cores (descriptor reader A, nginx auth_request renderer B, internal-port allocator C) and the cli.install nginx wiring already meet the spec and are tested. Added the missing safety wiring: every \"systemctl reload nginx\" in the install/remove orchestrator is now gated behind a checked \"nginx -t\", with tests asserting the test->reload ordering and that a failing config test aborts before the reload. Full suite (61 tests) green. The real auth_request->admin gating and homeui-cookie behaviour need a controller and are logged below as a manual-verification item."
+    },
+    {
+      "id": "4",
+      "status": "done",
+      "summary": "Wired the existing pure MQTT renderer (core D) and MqttProvisioner (wrapper H) to run ONCE at wb-docker-app helper install via a new `provision-mqtt` CLI verb called from the helper postinst — not per service. Made provisioning fully idempotent (no network re-create, no second mosquitto restart on a no-op re-run) and added tests covering re-run idempotency and that a service install never touches mosquitto. 64 tests pass."
+    }
+  ],
+  "parked": [
+    {
+      "id": "6",
+      "reason": "Blocked by WB-registry infrastructure and separate image CI-pipeline standing up (PRD Out of Scope)"
+    },
+    {
+      "id": "review-final",
+      "reason": "unresolved after 3 fix rounds: Malformed Debian changelog date: weekday does not match date (lintian/dpkg-parsechangelog violation) @ packaging/wb-docker-app/debian/changelog:11"
+    },
+    {
+      "id": "review-final",
+      "reason": "unresolved after 3 fix rounds: `list` verb only shows running containers, AC says \"installed\" services @ src/wb_docker_app/cli.py:list_apps (docker ps --filter label=wb.app)"
+    },
+    {
+      "id": "review-final",
+      "reason": "unresolved after 3 fix rounds: diag config `commands:` matcher would also match an inline/empty `commands:` mapping value @ src/wb_docker_app/diag.py:_commands_insert_pos"
+    },
+    {
+      "id": "review-final",
+      "reason": "unresolved after 3 fix rounds: diag splice assumes upstream uses 2-space list-item indentation; mismatch yields invalid YAML @ src/wb_docker_app/diag.py:_our_block (item = \"  - filename: ...\")"
+    },
+    {
+      "id": "review-final",
+      "reason": "unresolved after 3 fix rounds: diag.register() produces invalid YAML when the upstream commands: key is flow/inline style @ src/wb_docker_app/diag.py:99-124 (_commands_insert_pos / register)"
+    },
+    {
+      "id": "review-final",
+      "reason": "unresolved after 3 fix rounds: wb-docker-app 0.2.0 changelog entry has the wrong day-of-week @ packaging/wb-docker-app/debian/changelog:11"
+    }
+  ],
+  "reviewRounds": 4,
+  "remainingFindings": [
+    {
+      "title": "Malformed Debian changelog date: weekday does not match date (lintian/dpkg-parsechangelog violation)",
+      "where": "packaging/wb-docker-app/debian/changelog:11",
+      "severity": "minor"
+    },
+    {
+      "title": "`list` verb only shows running containers, AC says \"installed\" services",
+      "where": "src/wb_docker_app/cli.py:list_apps (docker ps --filter label=wb.app)",
+      "severity": "minor"
+    },
+    {
+      "title": "diag config `commands:` matcher would also match an inline/empty `commands:` mapping value",
+      "where": "src/wb_docker_app/diag.py:_commands_insert_pos",
+      "severity": "minor"
+    },
+    {
+      "title": "diag splice assumes upstream uses 2-space list-item indentation; mismatch yields invalid YAML",
+      "where": "src/wb_docker_app/diag.py:_our_block (item = \"  - filename: ...\")",
+      "severity": "minor"
+    },
+    {
+      "title": "diag.register() produces invalid YAML when the upstream commands: key is flow/inline style",
+      "where": "src/wb_docker_app/diag.py:99-124 (_commands_insert_pos / register)",
+      "severity": "major"
+    },
+    {
+      "title": "wb-docker-app 0.2.0 changelog entry has the wrong day-of-week",
+      "where": "packaging/wb-docker-app/debian/changelog:11",
+      "severity": "minor"
+    }
+  ],
+  "decisions": [
+    {
+      "area": "issue 1",
+      "decision": "Named the issue branch pipeline/wb-docker-apps-issue-1 (hyphen) instead of the requested pipeline/wb-docker-apps/issue-1 (slash).",
+      "rationale": "The integration branch pipeline/wb-docker-apps already exists as a ref, so git's ref store has a directory/file conflict: it cannot create pipeline/wb-docker-apps/issue-1 as a child of an existing leaf ref pipeline/wb-docker-apps. I tried git pack-refs to move refs out of the loose filesystem hierarchy, but the conflict is intrinsic to git's ref namespace, not the loose-ref layout. Renaming the integration branch was off-limits (must not touch other branches). The worktree path was kept exactly as requested (../.afk-wt/wb-docker-apps/issue-1).",
+      "alternatives": "Rename pipeline/wb-docker-apps to e.g. pipeline/wb-docker-apps/base so children can nest (rejected: touches another branch); abort and ask (rejected: hands-off run).",
+      "category": "contentious",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 1",
+      "decision": "Laid packaging out under packaging/<pkg>/ with debian/, systemd/, lib/, compose/ subdirs in this single repo, rather than splitting into one repo per package.",
+      "rationale": "Design §3.13 says repo=package in WB convention, but this slice lives in one repo alongside the shared helper source. Co-locating keeps the helper code reuse direct and the rootless tests simple, and an integration step can split repos later. dh_install mappings target the canonical install paths (/usr/lib/systemd/system, /usr/lib/wb-docker-app/...).",
+      "alternatives": "Separate per-package repos/directories at top level (rejected: premature for a walking skeleton, complicates the shared test command).",
+      "category": "undiscussed",
+      "confidence": "medium"
+    },
+    {
+      "area": "issue 1",
+      "decision": "Made the systemd unit Type=oneshot RemainAfterExit=yes with ExecStart=docker compose up -d and ExecStop=docker compose down, reconstructing base/override paths and the wb-<app> project name from %i via Environment lines.",
+      "rationale": "The CLI calls systemd.enable_now(app) without passing a path, so the unit must derive paths itself; mirroring cli.py/_compose (base /usr/lib/<app>/docker-compose.yml, override /mnt/data/.../docker-compose.override.yml, project wb-<app>) keeps the systemd-managed bring-up byte-identical to the helper's. oneshot+RemainAfterExit is the standard idiom for a compose-managed unit where restart:unless-stopped (in the compose) provides liveness.",
+      "alternatives": "A unit that execs the CLI directly (rejected: CLI install does pull+nginx+enable, not a plain up, and would recurse); Type=simple foreground compose (rejected: docker compose up -d returns immediately).",
+      "category": "undiscussed",
+      "confidence": "medium"
+    },
+    {
+      "area": "issue 1",
+      "decision": "Helper postinst only runs systemctl daemon-reload; it does NOT create the docker 'wb' network or configure mosquitto, even though the base compose references networks.wb external:true.",
+      "rationale": "Network/mosquitto setup is explicitly issue #4 (MQTT connectivity). Issue #1 acceptance for the helper is limited to shipping the unit, CLI and shell lib. The smoke tests use docker compose config (not up), which does not require the network to exist, so the slice is verifiable without it.",
+      "alternatives": "Create the wb network in the helper postinst now (rejected: scope creep into issue #4, and real bring-up validation is HITL anyway).",
+      "category": "routine",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 5",
+      "decision": "Used branch name pipeline/wb-docker-apps-issue-5 (hyphen) instead of the slash-form pipeline/wb-docker-apps/issue-5 from the setup instructions.",
+      "rationale": "git cannot create pipeline/wb-docker-apps/issue-5 because the ref pipeline/wb-docker-apps already exists as a file, not a directory (verified: 'cannot lock ref ... exists'). The existing sibling worktree branch pipeline/wb-docker-apps-issue-1 already uses the hyphen convention for exactly this reason.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "Renaming/deleting the pipeline/wb-docker-apps branch to free the namespace was rejected as it would touch another branch (forbidden) and break the integration target."
+    },
+    {
+      "area": "issue 5",
+      "decision": "Shipped the wb-diag-collect integration as a conf.d drop-in (/usr/share/wb-diag-collect/conf.d/60wb-docker-app.conf) plus a standalone collector script, where the drop-in registers the script as a 'commands' entry whose stdout is archived.",
+      "rationale": "Inspecting the released wb-diag-collect (github.com/wirenboard/wb-diag-collect) showed it reads ONLY a single monolithic /usr/share/wb-diag-collect/wb-diag-collect.conf with no conf.d merge. A drop-in fragment matching the tool's exact YAML schema is the lowest-risk, forward-compatible shape: it is the conventional WB pattern, locally testable for content/shape, and integrable on a controller. The collector discovers apps from wb.app container labels — the same self-describing source the CLI uses — so no extra state.",
+      "category": "contentious",
+      "confidence": "medium",
+      "alternatives": "Patching the monolithic main config directly (rejected: it is owned by the wb-diag-collect package, not ours). Relying solely on the existing wb-*.service journald glob (rejected: gives journals but not the per-service systemctl status the issue asks for)."
+    },
+    {
+      "area": "issue 5",
+      "decision": "Scoped the unattended-upgrades blacklist to explicit anchored package names (wb-docker-app$, wb-node-red$) rather than a broad wb-* regex.",
+      "rationale": "A bare wb-* would freeze unrelated WB system packages (wb-mqtt-*, wb-rules, etc.) from security updates — the opposite of intent. The design (§3.11) only wants the helper and container-service packages excluded. Each new service package adds its own anchored entry via a matching drop-in; documented in the conf comment and design.md.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "Broad 'wb-' prefix match (rejected: over-freezes the platform). 'wb-docker-' prefix (rejected: service packages are named wb-<service>, not wb-docker-<service>)."
+    },
+    {
+      "area": "issue 5",
+      "decision": "Documented the day-2 ops (verbs, unattended exclusion, diag-collect, downgrade/backup) as a new §3.11.1 subsection inside the existing Russian-language design.md rather than creating a new English ops doc.",
+      "rationale": "Keeps documentation co-located with the conceptual §3.11 it elaborates and matches the repo's single-design-doc convention and language. Avoids creating an unrequested standalone .md file.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "A separate doc/operations.md in English (rejected: splits the rationale from §3.11 and diverges from the repo's documentation style)."
+    },
+    {
+      "area": "issue 7",
+      "decision": "Created the branch as pipeline/wb-docker-apps-issue-7 instead of the requested pipeline/wb-docker-apps/issue-7.",
+      "rationale": "The branch pipeline/wb-docker-apps already exists, so git cannot create pipeline/wb-docker-apps/issue-7 — a ref cannot be both a file (refs/heads/pipeline/wb-docker-apps) and a directory. The slash form errors with 'cannot lock ref'. The chosen name matches the existing sibling pipeline/wb-docker-apps-issue-1 convention already in the repo and branches off pipeline/wb-docker-apps as instructed.",
+      "alternatives": "Rename/delete the pipeline/wb-docker-apps branch to free the namespace (rejected: the rules forbid touching other branches); use a nested name under a different prefix (rejected: diverges from repo convention).",
+      "category": "undiscussed",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 7",
+      "decision": "Chose a minimal 'echo' utility service (image registry.wirenboard.com/wb/echo:1.0.0-wb1, container port 8080, public wb.proxy.port 8080, proxy role admin) as the second service.",
+      "rationale": "The issue explicitly permits a minimal stub/utility service. Echo is the smallest plausible WB-managed web service and exercises every isolation property (distinct public port vs Node-RED's 1880, own loopback port, own nginx block) without inventing functionality. proxy.role admin mirrors Node-RED so the test isolates port/block differences rather than role differences.",
+      "alternatives": "Home Assistant (rejected: heavier, not required and would add unrelated surface); a non-web stub with no proxy labels (rejected: the descriptor reader and nginx renderer require wb.proxy.* labels, so a non-web service would not exercise the nginx-isolation acceptance).",
+      "category": "undiscussed",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 7",
+      "decision": "Built the FakeRunner in test_isolation.py to render 'docker compose config' from the real per-app base compose files (copied into tmp_path's base_dir) plus the .env the helper seeds, so the published loopback port reflects the actual allocation.",
+      "rationale": "The existing test_cli FakeRunner returns one hardcoded config regardless of app, which cannot prove per-app distinctness. Reading the real base compose + seeded .env makes the descriptor/nginx output reflect each service's true labels and its actually-allocated port — a faithful end-to-end isolation proof while still touching no real docker/systemd/nginx.",
+      "alternatives": "Hardcode two canned configs keyed by app (rejected: would not verify the proxied port equals the helper's real allocation, weakening the port-collision proof).",
+      "category": "routine",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 3",
+      "decision": "Used branch name pipeline/wb-docker-apps-issue-3 (dash) instead of the prescribed pipeline/wb-docker-apps/issue-3 (slash).",
+      "rationale": "An existing branch named 'pipeline/wb-docker-apps' occupies that ref as a file, so git cannot create a 'pipeline/wb-docker-apps/issue-3' ref under it (directory/file conflict) — the setup command fails with 'cannot lock ref'. Issue 1 already established the dash convention (pipeline/wb-docker-apps-issue-1), so I matched it.",
+      "alternatives": "Renaming/deleting the pipeline/wb-docker-apps branch to free the namespace (rejected: the rules forbid touching other branches and it is the integration target).",
+      "category": "undiscussed",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 3",
+      "decision": "Gated nginx -t before reload in BOTH the install and the remove paths, factored into a private _reload_nginx() helper.",
+      "rationale": "The issue names the install orchestrator explicitly, but remove also issues 'systemctl reload nginx' after unlinking a block. Validating before every reload is consistent, removes a duplicated literal, and prevents a reload of a config that some other include might have left referencing the just-removed block.",
+      "alternatives": "Gate only the install reload (literal reading of the acceptance text), leaving remove to reload unchecked.",
+      "category": "routine",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 3",
+      "decision": "Logged the controller HITL as a structured 'verify' item rather than creating an audit file.",
+      "rationale": "The repo has no audit/HITL file convention (none of issues 1-7 introduced one), and the workflow's own audit channel is the structured-output verify field. Creating a new doc would be unrequested and against the no-new-docs guidance.",
+      "alternatives": "Append a manual-verification section to the design doc or a new doc/audit file.",
+      "category": "undiscussed",
+      "confidence": "medium"
+    },
+    {
+      "area": "issue 4",
+      "decision": "Used flat branch name pipeline/wb-docker-apps-issue-4 instead of the requested nested pipeline/wb-docker-apps/issue-4.",
+      "rationale": "git cannot create the nested ref because 'pipeline/wb-docker-apps' already exists as a branch (a ref file), which blocks any 'pipeline/wb-docker-apps/*' child ref. The repo already uses the flat convention for sibling worktrees (pipeline/wb-docker-apps-issue-1/3/5/7).",
+      "alternatives": "Rename/delete the existing pipeline/wb-docker-apps branch to free the namespace — rejected as out of scope and destructive to a branch checked out in another worktree.",
+      "category": "undiscussed",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 4",
+      "decision": "Added a system-level `provision-mqtt` CLI verb (no app arg) and a Helper.provision_mqtt() method; the helper postinst calls `wb-docker-app provision-mqtt` on configure.",
+      "rationale": "The issue requires provisioning at helper install time, once per system, not per service. A dedicated verb keeps the per-app install/remove flow untouched and gives the postinst a single tested entry point, matching the existing thin-glue postinst pattern.",
+      "alternatives": "Calling provision inline from within Helper.install() with a once-guard flag — rejected because that couples system provisioning to per-service installs and risks repeating it.",
+      "category": "routine",
+      "confidence": "high"
+    },
+    {
+      "area": "issue 4",
+      "decision": "Strengthened MqttProvisioner.provision() to skip the mosquitto restart (and network create) when the network is present and both drop-ins already hold the exact rendered text.",
+      "rationale": "The acceptance demands mosquitto be restarted exactly once and that re-running provisioning be idempotent. Previously provision() always restarted mosquitto, so a helper upgrade re-running provision-mqtt would restart the broker again. The content-equality check makes a clean re-run a true no-op while still restarting when the rendered config drifts (e.g. a listener port change).",
+      "alternatives": "A sentinel/marker file written after first provision to short-circuit — rejected as it can drift from the actual installed config; the content-equality approach self-heals if a drop-in is edited or removed.",
+      "category": "undiscussed",
+      "confidence": "medium"
+    },
+    {
+      "area": "issue 4",
+      "decision": "Fixed the wb subnet to 172.29.0.0/24, gateway 172.29.0.1, listener port 11883, and put the mosquitto listener drop-in under /etc/mosquitto/conf.d and the systemd drop-in under /etc/systemd/system/mosquitto.service.d.",
+      "rationale": "These are the example values given in the issue and design.md §3.7. /etc locations make the helper-owned config survive package upgrades and be explicit/overridable. All are exposed as overridable constants/Paths fields so a controller-validated value can be swapped without touching logic.",
+      "alternatives": "A 0.0.0.0:<port> bind plus an iptables 'docker-subnet-only' rule (design.md §3.7 alternative) — rejected as more moving parts and broader exposure surface than a gateway-bound listener.",
+      "category": "contentious",
+      "confidence": "medium"
+    },
+    {
+      "area": "integrate wave 2",
+      "decision": "Resolved the tests/test_cli.py conflict during the issue-4 merge by keeping BOTH conflicting blocks: the issue-5 day-2 lifecycle tests (HEAD side, ending at test_parser_dispatches_list_without_an_app_argument) and the issue-4 provision-mqtt tests (test_parser_dispatches_provision_mqtt..., test_provision_mqtt_creates_the_network..., test_a_service_install_never_touches_mosquitto). Removed only the conflict markers and inserted two blank lines between the two test groups.",
+      "rationale": "The conflict was purely additive: both branches appended distinct, non-overlapping test functions at the same file location. Neither set redefines the other, so preserving both retains both issues' intent. Full suite passed (92 passed, 1 skipped) confirming no collisions.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "Could have kept only one side, but that would drop test coverage for one issue's feature, contradicting the requirement to preserve both intents."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Relocated the wb-echo exclusion from the helper drop-in into a new wb-echo-owned drop-in (packaging/wb-echo/apt/52wb-echo-no-unattended) and removed 'wb-echo$' from the helper's 52wb-docker-app-no-unattended, rather than just leaving the prior commit's helper entry in place.",
+      "rationale": "The finding's required fix and design §3.11.1 both state each service package adds its own drop-in. The pre-existing 'wb-echo$' in the helper (commit 47943bf) violated that convention and defeated the point of wb-echo as the second-service template proof (issue #7). Owning the exclusion in wb-echo is the architecturally correct, minimal change.",
+      "category": "contentious",
+      "confidence": "high",
+      "alternatives": "Leave 'wb-echo$' in the helper drop-in and only add wb-echo's own drop-in too. Rejected: duplicates the entry, keeps the helper hardcoding a slug it does not own, and contradicts the finding which says wb-echo 'should ship' its own drop-in (implying the exclusion belongs to wb-echo, not the helper)."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Named the new drop-in 52wb-echo-no-unattended (same 52 numeric prefix as the helper's).",
+      "rationale": "apt.conf.d ordering uses the numeric prefix; 52 mirrors the helper convention and the distinct filename avoids any collision. The finding specified '<NN>' leaving the number open.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "A different prefix (e.g. 53). No functional difference for an independent blacklist directive; chose consistency with the helper."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Updated tests/test_lifecycle_packaging.py to remove the assertion that the helper drop-in contains 'wb-echo$' and added a dedicated test for wb-echo's own drop-in.",
+      "rationale": "That assertion encoded the very convention violation being fixed; leaving it would have failed after relocating the entry. The new test pins the correct §3.11.1 behaviour.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "Keep the helper still listing wb-echo to satisfy the old test — rejected as it would re-introduce the finding."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Committed ONLY the 5 files belonging to this fix; left other pre-existing uncommitted working-tree changes (systemd@.service, cli.py, compose.py, diag.py, test_compose.py, test_isolation.py) untouched and unstaged.",
+      "rationale": "Those changes were already in the working tree on arrival and are unrelated to this finding (a separate WB_INTERNAL_PORT/.env fix). Scoping the commit keeps the fix reviewable and avoids capturing someone else's in-flight work.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "git add -A and commit everything — rejected as it would conflate unrelated changes into the finding's commit."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Deliver the AC by having postinst/prerm merge the collector command into wb-diag-collect's single main config, rather than waiting for a conf.d merge upstream or only shipping the (inert) drop-in.",
+      "rationale": "The released wb-diag-collect provably reads only one config with no conf.d merge, so the drop-in alone can never satisfy the AC. An idempotent, surgical in-place merge of just our entry is the standard Debian pattern for augmenting another package's single config and is reversible on uninstall. Kept the drop-in as the canonical description / forward path for when upstream adds conf.d.",
+      "category": "contentious",
+      "confidence": "high",
+      "alternatives": "Forking/patching wb-diag-collect to add conf.d support (out of scope, not our package); leaving it deferred (does not satisfy the AC); appending raw text to the YAML list (fragile, risks corrupting their config)."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Use PyYAML (added python3-yaml to Depends) to load/dump the config during the merge, and guard the import behind the file-existence check so a missing config or missing yaml does not crash postinst.",
+      "rationale": "wb-diag-collect itself depends on python3-yaml so it is present on any controller where the integration matters; parsing/dumping YAML is far safer than text munging. The file-check-before-import keeps the no-op (wb-diag-collect not installed) path dependency-free.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "Text-based append (fragile); a custom mini-parser (overkill)."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Register from postinst configure and deregister only from prerm remove/deconfigure (not upgrade).",
+      "rationale": "Matches the existing maintainer-script conventions in this repo (wb-node-red prerm) and ensures the entry survives package upgrades while being cleaned up on real removal.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "Deregister in postrm purge instead of prerm remove — but the CLI binary is gone by postrm purge, so prerm is the correct hook."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Added \"wb-echo$\" to the shared 52wb-docker-app-no-unattended blacklist rather than shipping a new per-package apt drop-in under packaging/wb-echo/.",
+      "rationale": "The finding offered both options. The existing convention in this exact file already lists the wb-node-red service slug directly in the shared blacklist (not via a drop-in), and the helper package's header explicitly says service packages add their name 'here'. Matching the established pattern is lower-risk and more consistent than introducing a new drop-in install mapping + debian packaging plumbing for wb-echo.",
+      "category": "contentious",
+      "confidence": "high",
+      "alternatives": "Ship packaging/wb-echo/apt/<file> + add an install mapping in wb-echo.install. Rejected as more moving parts with no benefit, and inconsistent with how wb-node-red is handled."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Removed the existing git worktree at /home/smintank/.afk-wt/wb-docker-apps-base to check the branch out in the main repo.",
+      "rationale": "Task explicitly said to work in the main repo on this branch, but the branch was checked out in a worktree (a branch can only be checked out in one place). The worktree was confirmed clean (no uncommitted changes, HEAD f94885b) so removal was non-destructive.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "Work inside the existing worktree instead. Rejected because the instruction specifically said to work in the main repo."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Used `--env-file <data_dir>/<app>/.env` (rather than WorkingDirectory or --project-directory) in both the systemd unit and the ComposeRunner.",
+      "rationale": "The finding offered either option. --env-file is the most surgical and identical across the unit and the Python wrapper: it points compose at exactly the seeded file without changing the project directory (which would also change where named-volume/relative paths resolve). It keeps base-then-override semantics and the fixed project name intact.",
+      "category": "contentious",
+      "confidence": "high",
+      "alternatives": "WorkingDirectory=/mnt/data/wb-docker-apps/%i (systemd-only, no ComposeRunner equivalent, and silently shifts compose's relative-path resolution); --project-directory (heavier, also moves the project root)."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Placed --env-file after `-p <project>` and before the `-f` file pair.",
+      "rationale": "--env-file is a top-level `docker compose` flag and must precede the subcommand; this slot matches the existing ComposeRunner prefix and keeps argv assertions clean.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "Appending after the subcommand — invalid placement for the top-level flag."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Scoped my commit to only the 5 fix-related files and excluded a concurrent agent's in-flight changes (diag.py, postinst, control, wb-echo apt drop-in, etc.) that were dirty in the shared working tree.",
+      "rationale": "Task asked for the minimal correct change for this finding. The other changes are a separate concern (unattended-upgrades drop-in, diag collector) being committed by another agent on the same branch; mixing them would muddy the fix and risk committing an untracked module reference.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "Committing everything in the working tree (would have bundled unrelated work and an untracked diag.py import that breaks a fresh checkout)."
+    },
+    {
+      "area": "fix round 1",
+      "decision": "Pruned a stale git worktree lock (.afk-wt/wb-docker-apps-base / wb-docker-apps) that was blocking checkout of pipeline/wb-docker-apps.",
+      "rationale": "The referenced worktree directories were empty and had no .git/worktrees metadata; `git worktree prune` cleared the stale entry and the branch checked out cleanly in the main repo as instructed.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "Working inside the supposed worktree path — impossible, it was empty/stale."
+    },
+    {
+      "area": "fix round 2",
+      "decision": "Also added a regression test (not just the one-line script fix) that stubs docker with Go-template semantics, rather than asserting against real docker output.",
+      "rationale": "The finding explicitly noted no test caught the bug because the suite only ran the collector with docker absent. A stub keeps the test hermetic and deterministic (real docker needs a socket + permissions, unavailable in CI), while still proving the correct template is used and the broken `index .Labels` form is rejected. Verified it fails on the old template and passes on the new one.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "Script-only change with no test (leaves the documented test gap open); or a test that shells out to real docker (non-hermetic, needs socket/root, would skip in most environments and not guard the regression)."
+    },
+    {
+      "area": "fix round 2",
+      "decision": "In the new test, prepend the stub dir to the real system PATH instead of using an isolated PATH containing only the stub.",
+      "rationale": "The collector pipes through sort/sed/awk/printf; an isolated PATH made those tools 'not found' so the discovered app could never reach stdout. Prepending the stub shadows docker while keeping coreutils available. The assertions (app name present, 'no running containers' line absent) are robust regardless of any real systemd units on the host.",
+      "category": "routine",
+      "confidence": "high",
+      "alternatives": "Isolated PATH with only the stub (breaks the collector's own pipeline tools); copying coreutils into a temp bindir (needlessly fragile/heavy)."
+    },
+    {
+      "area": "fix round 3",
+      "decision": "Solved the upstream-upgrade-reverts problem with an apt DPkg::Post-Invoke hook (re-run register-diag after every apt transaction) rather than diverting/renaming wb-diag-collect's file or adding a dpkg conffile.",
+      "rationale": "The released wb-diag-collect reads only one single file and has no conf.d/include support, so the only ways to make our entry survive are editing that file or re-triggering after upgrades. We do not own the file and must not make it a conffile of ours, so a post-invoke re-registration is the lowest-risk mechanism that needs no upstream change; register() is idempotent so steady-state cost is one file read.",
+      "category": "contentious",
+      "confidence": "high",
+      "alternatives": "dpkg-divert the upstream file (heavy, fragile, fights the foreign package); patch wb-diag-collect to add conf.d merge (out of scope, upstream change); accept the gap and document it (leaves the AC broken after a diag-collect upgrade)."
+    },
+    {
+      "area": "fix round 3",
+      "decision": "Kept register()/deregister() editing wb-diag-collect's main config in place (surgically) rather than refusing to touch the foreign file at all.",
+      "rationale": "The released tool reads no drop-in/include, so not touching the main file means the collector is never invoked and issue #5's AC is unmet. Surgical text splicing with sentinels preserves all foreign content and is fully reversible, which removes the destructive aspect the finding flagged while still delivering the integration.",
+      "category": "contentious",
+      "confidence": "medium",
+      "alternatives": "Wait for upstream conf.d support and ship only the inert drop-in (AC stays unmet on current controllers)."
+    },
+    {
+      "area": "fix round 3",
+      "decision": "Did not create a new commit; verified and accepted the equivalent commit 550a927 that a concurrent workspace process produced for the same fix.",
+      "rationale": "After my edits the working tree was modified concurrently and committed with an identical implementation, message referencing the finding, and the required trailer. Creating a duplicate commit would add noise; the existing commit satisfies the task and the suite is green.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "Reset and re-commit under my own authorship (pointless churn, same content)."
+    },
+    {
+      "area": "fix round 3",
+      "decision": "Used a pure-text surgical splice (sentinel-delimited block) instead of switching to a comment-preserving YAML library such as ruamel.yaml.",
+      "rationale": "The debian/control Depends line only includes python3-yaml (PyYAML), which cannot preserve comments; ruamel.yaml is not a packaging dependency. A text splice needs no new runtime dependency, preserves the foreign conffile byte-for-byte, and round-trips exactly. Lowest-risk and matches the design intent of touching only our own entry.",
+      "category": "contentious",
+      "confidence": "high",
+      "alternatives": "Add ruamel.yaml as a dependency and use its round-trip loader; rejected because it adds a new package dependency to a Wiren Board controller image and still reflows some formatting."
+    },
+    {
+      "area": "fix round 3",
+      "decision": "Restored the venv to its original state by uninstalling PyYAML after using it only to verify the generated output is valid YAML.",
+      "rationale": "The venv had no PyYAML originally and the yaml-dependent tests are written to skip when it is absent. Leaving PyYAML installed would be an undeclared environment change. The fix's own regression tests run without yaml, so coverage is unaffected.",
+      "category": "undiscussed",
+      "confidence": "high",
+      "alternatives": "Leave PyYAML installed so all tests run; rejected to avoid silently mutating the environment."
+    },
+    {
+      "area": "fix round 3",
+      "decision": "Kept the in-place modifications to diag.py, the new apt hook, the .install line, and the test_lifecycle_packaging.py additions that were present in the working tree, and built the fix around them.",
+      "rationale": "These changes form a single coherent fix for both consequences in the finding (comment loss and conffile-overwrite fragility) and are internally consistent (hook exists, is wired into .install, and is covered by a test). Reverting them would re-open the second consequence the finding explicitly raised.",
+      "category": "routine",
+      "confidence": "medium",
+      "alternatives": "Revert to a from-scratch minimal change addressing only the comment-loss; rejected because the upgrade-overwrite consequence is part of the same finding and the existing scaffolding already addresses it correctly."
+    }
+  ],
+  "verifyItems": [
+    {
+      "area": "issue 1",
+      "kind": "manual-test",
+      "detail": "Run dpkg-buildpackage for both packages on a Debian build host (needs fakeroot, debhelper-compat 13, dh-python, python3-setuptools/pybuild). The rootless tests build payloads via dpkg-deb --build and do not exercise debian/rules; confirm pybuild produces the /usr/bin/wb-docker-app entry point and that dh_install resolves the .install mappings against a real build tree."
+    },
+    {
+      "area": "issue 1",
+      "kind": "manual-test",
+      "detail": "On a real Wiren Board controller already on the docker-ce repack: apt install wb-node-red, confirm wb-docker-app is auto-pulled, the Node-RED container comes up, systemctl status wb-docker-app@node-red is active, the container survives docker kill and reboot (restart: unless-stopped), and apt purge tears it down cleanly and idempotently. This needs the 'wb' docker network from issue #4 to exist for a successful compose up."
+    },
+    {
+      "area": "issue 1",
+      "kind": "manual-check",
+      "detail": "Confirm the chosen issue branch name pipeline/wb-docker-apps-issue-1 (hyphen, not slash) is acceptable to the integration step, since the requested slashed name is impossible while the pipeline/wb-docker-apps integration branch exists as a leaf ref."
+    },
+    {
+      "area": "issue 1",
+      "kind": "tooling",
+      "detail": "The base compose pins image registry.wirenboard.com/wb/node-red:4.0.2-wb1; a docker compose pull/up against the real WB registry requires controller network access and that the image exists there. Not reachable from this environment."
+    },
+    {
+      "area": "issue 5",
+      "kind": "manual-test",
+      "detail": "On a real WB controller, confirm wb-diag-collect actually picks up the drop-in. The released tool reads only /usr/share/wb-diag-collect/wb-diag-collect.conf and has NO conf.d merge — so either the controller's wb-diag-collect must support conf.d, or the diag tooling/postinst must merge 60wb-docker-app.conf into the main config. Run wb-diag-collect, open the archive, and verify service/wb-docker-app.log contains each running service's systemctl status and recent journalctl output."
+    },
+    {
+      "area": "issue 5",
+      "kind": "manual-test",
+      "detail": "On a controller with unattended-upgrades configured, verify the blacklist takes effect: run `unattended-upgrade --dry-run --debug` and confirm wb-docker-app and wb-node-red are reported as blacklisted/skipped while an unrelated wb-* system package is still eligible."
+    },
+    {
+      "area": "issue 5",
+      "kind": "manual-test",
+      "detail": "Exercise the downgrade path: `apt-get install wb-node-red=<older-version>` followed by `wb-docker-app update node-red`, and confirm the container is recreated on the older image tag (requires the prior image still in the local docker cache or WB registry)."
+    },
+    {
+      "area": "issue 5",
+      "kind": "tooling",
+      "detail": "PyYAML is absent from /home/smintank/wb-node-red/.venv, so the YAML-shape test for the diag drop-in (test_diag_dropin_is_valid_yaml_with_the_expected_schema) skips. The drop-in was validated manually with system python3 (parses to the expected commands/journald_logs schema). Add pyyaml to the venv if CI should enforce the YAML shape."
+    },
+    {
+      "area": "issue 7",
+      "kind": "manual-test",
+      "detail": "On a real Wiren Board controller, apt install wb-echo alongside wb-node-red and confirm: both containers run, each reachable on its public port behind the homeui login, mosquitto is NOT restarted and the wb docker network is NOT re-created/modified on the second install, and apt purge wb-echo leaves Node-RED + broker + wb network intact. The orchestrator tests prove this with a fake Runner but cannot exercise real docker/systemd/nginx/mosquitto."
+    },
+    {
+      "area": "issue 7",
+      "kind": "tooling",
+      "detail": "The image registry.wirenboard.com/wb/echo:1.0.0-wb1 referenced in the echo base compose is a placeholder and does not exist in the WB registry. A real utility/echo image (or a different chosen image) must be published there before wb-echo can actually pull and run on a controller."
+    },
+    {
+      "area": "issue 3",
+      "kind": "manual-test",
+      "detail": "On controller candidate aat3d5fw (wb-2602/wb7, already on the docker-ce repack): install wb-node-red and verify the generated /etc/nginx/includes/default.wb.d/node-red.conf actually gates correctly. (1) WHAT: an unauthenticated browser hitting http://aat3d5fw:1880 is 302-redirected to the homeui /login form (not served a bare 401). (2) After logging in as an Administrator-role user, access is granted via the existing homeui session cookie WITHOUT a second login — confirming the cookie is host-bound, not port-bound, so it carries from the homeui port to :1880. (3) A non-admin (Operator/User) role is denied (auth_request -> wb-homeui-backend honours set $required_user_type \"admin\"). (4) The Node-RED editor's WebSocket connection works through the proxy (editor stays live, deploy works). This is design.md §6 item 1 and cannot be confirmed off-controller because it depends on the real wb-homeui-backend auth_request endpoint /auth/check and its cookie/role semantics."
+    },
+    {
+      "area": "issue 3",
+      "kind": "tooling",
+      "detail": "Needs a real WB controller with wb-mqtt-homeui (providing the nginx /auth/check auth_request handler over the homeui backend unix socket), an admin-role and a non-admin-role homeui account to test both grant and deny, and a running docker-ce so the container actually binds 127.0.0.1:<internal>. No way to stand this up in CI/sandbox."
+    },
+    {
+      "area": "issue 3",
+      "kind": "manual-check",
+      "detail": "Confirm `nginx -t` on the controller passes with the rendered server-block in place (the new safety gate). If WB's base nginx config does not already define the `/auth/check` upstream / location that auth_request targets, `nginx -t` could fail and (by design now) abort the reload — verify the homeui auth_request location is present in the controller's nginx config so the generated block validates."
+    },
+    {
+      "area": "issue 4",
+      "kind": "manual-test",
+      "detail": "On a real WB controller, confirm the chosen wb subnet 172.29.0.0/24 / gateway 172.29.0.1 does NOT collide with subnets already in use on WB controllers (other docker networks, VPNs, LAN). If it collides, change WB_NETWORK_SUBNET/WB_NETWORK_GATEWAY in src/wb_docker_app/cli.py. Requires controller access (design.md §6 item 2 & §5)."
+    },
+    {
+      "area": "issue 4",
+      "kind": "manual-test",
+      "detail": "Confirm reload-vs-restart: verify that mosquitto SIGHUP/reload does NOT open the new gateway listener and that a full `systemctl restart mosquitto` is required for `listener 11883 172.29.0.1` to bind. Requires a controller with mosquitto installed."
+    },
+    {
+      "area": "issue 4",
+      "kind": "manual-test",
+      "detail": "Confirm gateway-listener bind survives a controller reboot: the After=docker.service drop-in must ensure docker brings up the `wb` network before mosquitto binds. Reboot the controller and verify mosquitto is listening on 172.29.0.1:11883 and a container on network `wb` can reach the broker, while 1883 is NOT newly exposed on 0.0.0.0."
+    },
+    {
+      "area": "issue 4",
+      "kind": "manual-check",
+      "detail": "Approve the helper modifying mosquitto config (PRD Further Notes #1, #3): the helper writes /etc/mosquitto/conf.d/wb.conf and a systemd drop-in. Confirm this is acceptable policy on WB controllers and does not conflict with WB's own mosquitto provisioning."
+    },
+    {
+      "area": "issue 4",
+      "kind": "tooling",
+      "detail": "The packaging shellcheck and dpkg-deb/docker-compose tests skip when those tools are absent; in this environment shellcheck passed on the modified postinst, but a full `dpkg-buildpackage` install→postinst run (which actually invokes `wb-docker-app provision-mqtt`) was not exercised. Build the .deb and install it on a controller (or in a docker-enabled CI) to verify the postinst provisioning runs and is idempotent on a second install/upgrade."
+    },
+    {
+      "area": "integrate wave 2",
+      "kind": "manual-check",
+      "detail": "Re-check the issue-4 merge commit f94885b in worktree /home/smintank/.afk-wt/wb-docker-apps-base, specifically tests/test_cli.py around the joined region (issue-5 lifecycle tests immediately followed by issue-4 provision-mqtt tests) and the auto-merged src/wb_docker_app/cli.py to confirm both the issue-3 'nginx -t before systemctl reload nginx' sequence (_reload_nginx, ~lines 141-149) and the issue-4 MqttProvisioner wiring (provision_mqtt method ~lines 79-99 plus the provision-mqtt subparser/dispatch) coexist as intended."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-test",
+      "detail": "On a real controller, confirm unattended-upgrades actually skips wb-echo after the drop-in lands: install the wb-echo .deb, then check `apt-config dump | grep -i Package-Blacklist` shows wb-echo and run `unattended-upgrade --dry-run -d` to confirm wb-echo is not selected. The test suite only checks file presence/shape, not runtime apt behaviour (noted in the test module docstring)."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-check",
+      "detail": "There were unrelated pre-existing uncommitted changes in the working tree (systemd wb-docker-app@.service, src/wb_docker_app/cli.py, compose.py, new diag.py, test_compose.py, test_isolation.py). A separate commit 8558a5e ('fix(systemd): load per-app .env...') now sits on top of mine on the branch. Confirm those belong to other work and were intended, since they were committed outside this task's scope."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-test",
+      "detail": "On a real controller with wb-diag-collect installed: install wb-docker-app, confirm /usr/share/wb-diag-collect/wb-diag-collect.conf gains the service/wb-docker-app commands entry, run wb-diag-collect and confirm service/wb-docker-app.log (per-service systemctl status + logs) appears in the archive. Then `apt remove wb-docker-app` and confirm the entry is removed and the rest of the config is untouched."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-check",
+      "detail": "Confirm install order: register-diag is a no-op if wb-diag-collect is configured after wb-docker-app. wb-docker-app does not Depend on wb-diag-collect, so on a controller where wb-diag-collect is installed later the entry will be missing until wb-docker-app is reconfigured. If diag visibility must be guaranteed regardless of order, consider a wb-diag-collect trigger or a Depends/Recommends — flagging as a judgement call I did not make to keep the change minimal."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "tooling",
+      "detail": "The 4 yaml-dependent diag tests skip in the project .venv because PyYAML is not installed there. Add pyyaml to the test/dev environment if you want them to run in CI; I verified them locally by temporarily installing then uninstalling PyYAML."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-check",
+      "detail": "Confirm removing the worktree at /home/smintank/.afk-wt/wb-docker-apps-base did not disrupt any other running pipeline/automation that expected that path to exist. It was clean when removed, but the surrounding AFK tooling created it."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-check",
+      "detail": "Confirm the chosen fix approach (adding the slug to the shared blacklist vs. a per-package drop-in) matches the team's preferred convention. Both satisfy the design invariant; I matched the existing wb-node-red precedent."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-test",
+      "detail": "On a real controller, install an app and confirm the published container port matches the allocator-assigned WB_INTERNAL_PORT in /mnt/data/wb-docker-apps/<app>/.env (e.g. `docker compose -p wb-<app> --env-file <.env> -f <base> -f <override> ps` / `docker ps`), and that it survives a reboot via `systemctl restart wb-docker-app@<app>` — the unit-test fake cannot prove real compose --env-file resolution. design.md §5 still lists the env-injection mechanism as an open HITL item."
+    },
+    {
+      "area": "fix round 1",
+      "kind": "manual-check",
+      "detail": "A concurrent agent had uncommitted work on the same branch (src/wb_docker_app/diag.py untracked, plus a `from . import diag` line in the working-tree cli.py, postinst/control/prerm/diag changes). Confirm that agent commits diag.py together with its import so a fresh checkout imports cleanly; my commit deliberately does not include that import."
+    },
+    {
+      "area": "fix round 2",
+      "kind": "manual-test",
+      "detail": "End-to-end on a real WB controller: with a wb-docker-app container running, run /usr/lib/wb-docker-app/diag/wb-docker-app-diag-collect (or trigger wb-diag-collect) and confirm the 'installed services (wb.app labels)' section now lists the app name rather than '(no running wb-docker-app containers...)'. The unit test uses a docker stub; real docker --format behavior on the controller's docker version should be confirmed once."
+    },
+    {
+      "area": "fix round 3",
+      "kind": "manual-test",
+      "detail": "On a real controller with wb-diag-collect installed, run a dpkg/apt transaction that reinstalls or upgrades wb-diag-collect, then confirm /usr/share/wb-diag-collect/wb-diag-collect.conf again contains the sentinel-delimited wb-docker-app block (i.e. the DPkg::Post-Invoke hook actually fired and healed the entry). The apt hook path is not exercised by the unit tests."
+    },
+    {
+      "area": "fix round 3",
+      "kind": "manual-test",
+      "detail": "Run wb-diag-collect end-to-end on a controller and confirm the archive contains service/wb-docker-app.log with per-instance systemctl status + logs (issue #5 AC). The repo tests cannot run the real wb-diag-collect binary."
+    },
+    {
+      "area": "fix round 3",
+      "kind": "manual-check",
+      "detail": "Confirm the surgical splice yields valid YAML against the ACTUAL shipped wb-diag-collect.conf layout (the tests use representative fixtures). Edge case: if upstream ever ships the file with `commands:` on the same line as flow-style content or with no trailing newline mid-file, re-verify the insert position logic in diag.py _commands_insert_pos handles it."
+    },
+    {
+      "area": "fix round 3",
+      "kind": "manual-check",
+      "detail": "Confirm the sentinel-comment block format is acceptable to wb-diag-collect's actual YAML parser on a real controller. I verified it parses with PyYAML, but the upstream tool's loader/version was not exercised here."
+    },
+    {
+      "area": "fix round 3",
+      "kind": "manual-test",
+      "detail": "On a controller, install wb-docker-app over a real wb-diag-collect, then run `apt upgrade wb-diag-collect` and confirm the DPkg::Post-Invoke hook (53wb-docker-app-reg-diag) re-registers the collector entry and the wb-diag-collect archive contains the per-service systemctl status output (issue #5 AC). The apt-hook behavior is only unit-tested at the file/wiring level, not executed end-to-end."
+    },
+    {
+      "area": "fix round 3",
+      "kind": "manual-check",
+      "detail": "Verify no other caller relies on the removed _is_ours() helper from diag.py (grep across the repo and any service packages); the public register()/deregister() API is unchanged but the internal helper was removed."
+    }
+  ],
+  "auditReport": "# AFK audit — wb-docker-apps (full-auto)\n\nThe agents shipped a walking skeleton for WB Docker-app packaging across issues 1, 3, 4, 5, 7 plus three rounds of fixes. The single highest-risk theme: **the released `wb-diag-collect` has no conf.d/include support, so the agents ended up editing a package they do not own** — this assumption drove three contentious fixes and is the thing most likely to need rework. A second theme: **a self-contradiction in fix round 1** about where the `wb-echo` unattended-upgrades exclusion lives (see review item 4). Nothing was validated on a real controller — every acceptance criterion that matters (compose up, nginx auth gating, mosquitto listener, diag archive contents) is HITL.\n\n## ⚠️ Decisions to review first\n\n1. **Editing the foreign `wb-diag-collect` main config in place** (fix round 1 → escalated in round 3). The released tool reads only `/usr/share/wb-diag-collect/wb-diag-collect.conf` with no conf.d merge, so the agents made postinst/prerm surgically splice a sentinel-delimited block into a file owned by another package. *Why:* the drop-in alone can never satisfy issue #5's AC on current controllers. *Alternative not taken:* ship only the inert drop-in and wait for upstream conf.d support (leaves AC unmet). **Risk:** modifying another package's conffile is fragile and was explicitly flagged as the original finding. Confidence on the round-3 in-place edit was self-rated *medium*.\n\n2. **APT `DPkg::Post-Invoke` hook to re-register after every apt transaction** (fix round 3, contentious, high confidence). Because the spliced entry is wiped whenever `wb-diag-collect` upgrades, a hook re-runs `register-diag` after every apt run. *Alternatives:* `dpkg-divert` the upstream file (rejected: fights the foreign package) or patch upstream (out of scope). **Risk:** a global post-invoke hook runs on *every* apt transaction on the controller; steady-state cost and failure modes need a human eye.\n\n3. **Mosquitto subnet/listener fixed values: 172.29.0.0/24, gateway .1, listener port 11883** (issue 4, contentious, medium confidence). Taken from issue/design examples. *Alternative not taken:* a `0.0.0.0:<port>` bind + iptables subnet rule. **Risk:** the subnet could collide with existing docker networks / VPN / LAN on a real controller; the helper also writes mosquitto config it does not own (`/etc/mosquitto/conf.d/wb.conf` + systemd drop-in) — a policy decision that needs approval.\n\n4. **CONTRADICTION — where the `wb-echo` unattended-upgrades exclusion lives** (fix round 1, two contentious decisions that disagree). One decision *relocated* `wb-echo$` out of the helper's shared blacklist into a new `wb-echo`-owned drop-in (`packaging/wb-echo/apt/52wb-echo-no-unattended`), citing design §3.11.1 (\"each service package adds its own drop-in\"). A second decision *added* `wb-echo$` to the shared `52wb-docker-app-no-unattended` blacklist, citing the existing `wb-node-red` precedent. These are mutually exclusive conventions. **Action: verify which one actually landed in the merged tree and that the test suite isn't asserting both/neither.**\n\n5. **Branch namespace: `pipeline/wb-docker-apps-issue-N` (hyphen) instead of requested `…/issue-N` (slash)** (issues 1, 3, 4, 5, 7; one rated contentious, rest routine). git refuses the slash form because `pipeline/wb-docker-apps` already exists as a leaf ref (dir/file conflict). Renaming the integration branch was off-limits. *Risk:* the integration/CI step may expect the slash form — confirm it accepts the hyphen convention.\n\n6. **Merge `wb-diag-collect` entry using PyYAML text vs. a YAML lib that preserves comments** (fix round 3, contentious, high confidence). Chose pure-text sentinel splice over `ruamel.yaml` to avoid adding a runtime dep and to preserve the foreign file byte-for-byte. Low residual risk but the insert-position logic (`_commands_insert_pos`) is untested against the real upstream file layout.\n\n7. **`--env-file <data_dir>/<app>/.env` instead of `WorkingDirectory`/`--project-directory`** (fix round 1, contentious, high confidence). Surgical and identical across the systemd unit and the Python `ComposeRunner`. Low risk; flagged only because compose relative-path resolution still differs from project-directory semantics and the env-injection mechanism is an open HITL item in design §5.\n\n## Decisions made without you\n\n### Undiscussed\n- **Packaging layout** (issue 1): co-located all packages under `packaging/<pkg>/` in one repo rather than one-repo-per-package per WB convention §3.13; an integration step can split later. *Medium confidence.*\n- **systemd unit shape** (issue 1): `Type=oneshot RemainAfterExit=yes`, `ExecStart=docker compose up -d` / `ExecStop=down`, deriving base/override paths and `wb-<app>` project name from `%i`. *Medium confidence.*\n- **`provision-mqtt` as a system-level CLI verb** (issue 4): no app arg; postinst calls it on configure; keeps per-app install flow untouched.\n- **Idempotent mosquitto provisioning** (issue 4): skip restart + network create when network present and drop-ins already match rendered text (content-equality, not a marker file). *Medium confidence.*\n- **Second service = minimal `echo` utility** (issue 7): `registry.wirenboard.com/wb/echo:1.0.0-wb1`, port 8080, proxy role admin — smallest service that still exercises nginx/port isolation.\n- **Day-2 ops documented as new §3.11.1 inside existing Russian design.md** (issue 5) rather than a new English ops doc.\n- **HITL logged as structured `verify` items, not an audit file** (issue 3) — repo has no audit-file convention.\n- **Anchored unattended blacklist names (`wb-docker-app$`, `wb-node-red$`)** not a broad `wb-*` (issue 5) — avoids freezing unrelated WB system packages. *High confidence.*\n- **PyYAML added to Depends, import guarded behind file-existence check** (fix round 1) so missing config/yaml never crashes postinst.\n- **Several commits deliberately scoped to only the fix files**, leaving concurrent agents' in-flight working-tree changes (diag.py, cli.py, compose.py, systemd unit, tests) uncommitted/untouched (fix rounds 1 & 3). A separate commit `8558a5e` (\"load per-app .env\") and `550a927` now sit on the branch from other processes.\n- **Removed/pruned a git worktree** at `/home/smintank/.afk-wt/wb-docker-apps-base` to check the branch out in the main repo (confirmed clean before removal).\n- **Regression test for the diag template bug stubs docker with Go-template semantics** (fix round 2) rather than asserting against real docker.\n- **Uninstalled PyYAML from the venv afterward** (fix round 3) to avoid an undeclared environment change.\n\n### Routine\n- Helper postinst only runs `systemctl daemon-reload`; does NOT create the `wb` network or configure mosquitto (deferred to issue #4).\n- `nginx -t` gated before reload in BOTH install and remove paths via a `_reload_nginx()` helper (issue 3).\n- FakeRunner in `test_isolation.py` renders `docker compose config` from real per-app base compose + seeded `.env` (issue 7).\n- Wave-2 merge kept BOTH conflicting test blocks in `tests/test_cli.py` (issue-5 lifecycle + issue-4 provision-mqtt); additive, suite green (92 passed, 1 skipped).\n- New drop-in named `52wb-echo-no-unattended` to mirror the helper's `52` apt-ordering prefix.\n- Updated `test_lifecycle_packaging.py` to drop the helper-`wb-echo$` assertion and add a wb-echo-own-drop-in test.\n- `register` on postinst configure / `deregister` on prerm remove+deconfigure (not upgrade) — matches repo maintainer-script conventions.\n- `--env-file` placed after `-p <project>`, before the `-f` file pair (correct slot for a top-level flag).\n- Test PATH prepends the docker stub to the real system PATH so coreutils (sort/sed/awk) stay available (fix round 2).\n- Accepted concurrent commit `550a927` instead of creating a duplicate (fix round 3).\n- Kept in-place diag.py/apt-hook/.install/test changes as a single coherent fix (fix round 3). *Medium confidence.*\n\n## Manual verification checklist\n\n- [ ] **Resolve the wb-echo exclusion contradiction**: inspect the merged tree to confirm whether `wb-echo$` lives in the shared `52wb-docker-app-no-unattended` blacklist OR in a `wb-echo`-owned drop-in — not both, not neither — and that the test suite asserts the chosen convention. (fix round 1)\n- [ ] Confirm the hyphen branch name `pipeline/wb-docker-apps-issue-N` is acceptable to the integration step (slash form impossible). (issues 1/3/4/5/7)\n- [ ] Confirm policy approval for the helper writing mosquitto config (`/etc/mosquitto/conf.d/wb.conf` + systemd drop-in) on WB controllers without conflicting with WB's own mosquitto provisioning. (issue 4)\n- [ ] Confirm the WB controller's nginx base config defines the `/auth/check` upstream/location that the rendered Node-RED block's `auth_request` targets, so `nginx -t` passes and doesn't (by new design) abort the reload. (issue 3)\n- [ ] Re-check merge commit `f94885b` (worktree `.afk-wt/wb-docker-apps-base`): in `cli.py` confirm both issue-3 `_reload_nginx` (`nginx -t` before reload, ~L141-149) and issue-4 `MqttProvisioner` wiring + `provision-mqtt` subparser (~L79-99) coexist; in `test_cli.py` confirm the joined test region is intact. (wave 2)\n- [ ] Confirm the chosen blacklist convention (slug-in-shared-file vs per-package drop-in) matches the team's preferred convention. (fix round 1)\n- [ ] Confirm pre-existing uncommitted changes now on the branch via commit `8558a5e` (systemd unit, cli.py, compose.py, diag.py, test_compose.py, test_isolation.py) belong to other intended work. (fix round 1)\n- [ ] Decide whether diag visibility must be order-independent: `wb-docker-app` does NOT Depend/Recommend `wb-diag-collect`, so if diag-collect is installed *later* the entry is missing until reconfigure. Consider a trigger or Depends/Recommends — a judgement call the agent did not make. (fix round 1)\n- [ ] Confirm removing the worktree at `.afk-wt/wb-docker-apps-base` did not disrupt other AFK tooling that created/expected that path. (fix round 1)\n- [ ] Confirm the concurrent agent committed `diag.py` together with its `from . import diag` import so a fresh checkout imports cleanly (this agent's commit deliberately excluded the import). (fix round 1)\n- [ ] Validate the surgical splice produces valid YAML against the ACTUAL shipped `wb-diag-collect.conf` (tests use fixtures); re-verify `_commands_insert_pos` for edge cases (flow-style `commands:`, no trailing newline mid-file). (fix round 3)\n- [ ] Confirm the sentinel-comment block format is accepted by the real upstream `wb-diag-collect` YAML loader/version on a controller (only PyYAML-verified here). (fix round 3)\n- [ ] Grep repo + service packages for any caller of the removed internal `_is_ours()` helper in diag.py (public `register`/`deregister` API unchanged). (fix round 3)\n\n## Manual test plan\n\n- [ ] **Build both .debs** on a Debian build host (fakeroot, debhelper-compat 13, dh-python, pybuild): confirm pybuild produces `/usr/bin/wb-docker-app` and `dh_install` resolves the `.install` mappings against a real build tree (rootless tests skip `debian/rules`). (issue 1)\n- [ ] **Full lifecycle on a real WB controller**: `apt install wb-node-red` → confirm `wb-docker-app` auto-pulled, Node-RED container up, `systemctl status wb-docker-app@node-red` active, survives `docker kill` + reboot (`restart: unless-stopped`), `apt purge` tears down cleanly and idempotently. Needs the `wb` network from issue #4. (issue 1)\n- [ ] **Diag archive contents**: run `wb-diag-collect`, open the archive, confirm `service/wb-docker-app.log` contains each running service's `systemctl status` + recent `journalctl`. (issue 5)\n- [ ] **Unattended-upgrades blacklist**: `unattended-upgrade --dry-run --debug` shows `wb-docker-app` and `wb-node-red` skipped while an unrelated `wb-*` system package stays eligible. (issue 5)\n- [ ] **Downgrade path**: `apt-get install wb-node-red=<older>` then `wb-docker-app update node-red`; confirm the container is recreated on the older image tag. (issue 5)\n- [ ] **Two-service isolation**: install `wb-echo` alongside `wb-node-red`; confirm both run, each reachable on its public port behind homeui login, mosquitto NOT restarted and `wb` network NOT modified on the second install, and `apt purge wb-echo` leaves Node-RED + broker + network intact. (issue 7)\n- [ ] **nginx auth gating** on controller aat3d5fw: unauth hit on `:1880` → 302 to homeui `/login`; admin homeui session cookie carries to `:1880` without re-login; non-admin role denied; Node-RED editor WebSocket works through the proxy. (issue 3, design §6 item 1)\n- [ ] **Subnet collision check**: confirm `172.29.0.0/24` / gateway `.1` does not collide with existing docker networks / VPN / LAN; change `WB_NETWORK_SUBNET`/`WB_NETWORK_GATEWAY` if it does. (issue 4)\n- [ ] **Reload-vs-restart**: confirm mosquitto SIGHUP/reload does NOT open the gateway listener and a full `systemctl restart mosquitto` is required for `listener 11883 172.29.0.1` to bind. (issue 4)\n- [ ] **Reboot survival**: reboot controller; confirm mosquitto listening on `172.29.0.1:11883` (docker brings up `wb` before mosquitto via `After=docker.service`), a container on `wb` reaches the broker, and `1883` is NOT newly exposed on `0.0.0.0`. (issue 4)\n- [ ] **postinst provisioning idempotency**: build .deb, install on controller/docker-CI, confirm postinst runs `wb-docker-app provision-mqtt` and is a no-op on a second install/upgrade. (issue 4)\n- [ ] **wb-echo unattended skip at runtime**: install wb-echo .deb, `apt-config dump | grep -i Package-Blacklist` shows wb-echo, `unattended-upgrade --dry-run -d` confirms it's not selected. (fix round 1)\n- [ ] **Diag register/deregister round-trip**: on a controller with wb-diag-collect, `apt install wb-docker-app` → confirm main config gains the commands entry → run wb-diag-collect → `service/wb-docker-app.log` present → `apt remove wb-docker-app` → entry removed, rest of config untouched. (fix round 1)\n- [ ] **Published port == allocated port**: install an app, confirm container published port matches `WB_INTERNAL_PORT` in `/mnt/data/wb-docker-apps/<app>/.env` and survives `systemctl restart wb-docker-app@<app>`. (fix round 1)\n- [ ] **Diag template fix end-to-end**: with a container running, run the collector and confirm the \"installed services (wb.app labels)\" section lists the app name (not the \"no running containers\" line); verify real docker `--format` behaviour on the controller's docker version. (fix round 2)\n- [ ] **Post-invoke hook heals after upgrade**: with wb-docker-app installed over real wb-diag-collect, run `apt upgrade wb-diag-collect`, confirm the `DPkg::Post-Invoke` hook (`53wb-docker-app-reg-diag`) re-inserts the sentinel block and the archive again contains per-service status. (fix round 3)\n- [ ] **Real wb-diag-collect run** end-to-end confirms `service/wb-docker-app.log` with per-instance `systemctl status` + logs (issue #5 AC) — repo tests can't run the real binary. (fix round 3)\n\n## Tools & infra needed to test\n\n- **Debian build host** with fakeroot, debhelper-compat 13, dh-python, python3-setuptools/pybuild — to run `dpkg-buildpackage` and exercise `debian/rules` (rootless tests skip it). (issue 1)\n- **A real Wiren Board controller on the docker-ce repack** (candidate `aat3d5fw` / wb-2602/wb7 named for issue 3) with running docker-ce — for every install/lifecycle/reboot/purge test. Sandbox/CI cannot stand this up.\n- **Access to `registry.wirenboard.com`** with the images existing: `wb/node-red:4.0.2-wb1` requires controller network access; **`wb/echo:1.0.0-wb1` is a placeholder that does NOT exist** and must be published (or a real image chosen) before wb-echo can pull/run. (issues 1, 7)\n- **`wb-mqtt-homeui` / wb-homeui-backend** providing the nginx `/auth/check` `auth_request` handler over the homeui unix socket, plus an **admin-role and a non-admin-role homeui account** — to test both grant and deny on the Node-RED proxy block. (issue 3)\n- **A controller with mosquitto installed** and the `wb` docker network — to verify the gateway listener, reload-vs-restart behaviour, and reboot bind ordering. (issue 4)\n- **A controller with `unattended-upgrades` configured** — to verify the blacklist takes effect at runtime. (issues 5, fix round 1)\n- **A controller with `wb-diag-collect` installed** (and the ability to upgrade/reinstall it) — to verify the in-place splice, the post-invoke heal hook, and the archive contents. (issues 5, fix rounds 1 & 3)\n- **PyYAML in the project `.venv`** — currently absent, so 4 YAML-shape diag tests (e.g. `test_diag_dropin_is_valid_yaml_with_the_expected_schema`) skip; add `pyyaml` to the dev/CI env to enforce them. (issue 5, fix round 1)\n- **shellcheck + dpkg-deb + docker-compose** in CI — packaging tests skip when absent; shellcheck passed on the modified postinst here, but a full build→install→postinst run (which invokes `provision-mqtt`) was never exercised. (issue 4)\n",
+  "summary": "[full-auto] 5 issue(s) integrated on pipeline/wb-docker-apps; 7 parked/needs-human; 6 review finding(s) unresolved after 3 fix round(s); 10 contentious autonomous decision(s) logged.",
+  "issues": [
+    {
+      "id": "1",
+      "title": "Walking skeleton — .deb packaging",
+      "type": "AFK",
+      "blockedBy": []
+    },
+    {
+      "id": "5",
+      "title": "Lifecycle & observability packaging tails",
+      "type": "AFK",
+      "blockedBy": [
+        "1"
+      ]
+    },
+    {
+      "id": "7",
+      "title": "Second-service isolation (wb-echo)",
+      "type": "AFK",
+      "blockedBy": [
+        "1"
+      ]
+    },
+    {
+      "id": "3",
+      "title": "Web access behind WB login — wiring + HITL",
+      "type": "HITL",
+      "blockedBy": [
+        "1"
+      ]
+    },
+    {
+      "id": "4",
+      "title": "MQTT connectivity — provisioner wiring + HITL",
+      "type": "HITL",
+      "blockedBy": [
+        "1"
+      ]
+    },
+    {
+      "id": "6",
+      "title": "Derived Node-RED image (infra-blocked)",
+      "type": "HITL",
+      "blockedBy": [
+        "4"
+      ]
+    }
+  ],
+  "runId": "wf_c77c3408-402",
+  "taskId": "w5id7t3x3",
+  "finishedDate": "2026-06-03",
+  "testsOnBranch": "111 passed"
+}
