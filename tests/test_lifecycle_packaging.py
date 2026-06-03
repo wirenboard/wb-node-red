@@ -37,6 +37,7 @@ HELPER = REPO / "packaging" / "wb-docker-app"
 ECHO = REPO / "packaging" / "wb-echo"
 
 APT_CONF = HELPER / "apt" / "52wb-docker-app-no-unattended"
+DIAG_REREG_HOOK = HELPER / "apt" / "53wb-docker-app-reg-diag"
 DIAG_DROPIN = HELPER / "diag" / "60wb-docker-app.conf"
 DIAG_SCRIPT = HELPER / "diag" / "wb-docker-app-diag-collect"
 INSTALL = HELPER / "debian" / "wb-docker-app.install"
@@ -138,6 +139,23 @@ def test_diag_files_land_in_their_target_paths():
             in mappings)
     assert ("diag/60wb-docker-app.conf usr/share/wb-diag-collect/conf.d/"
             in mappings)
+
+
+def test_apt_hook_reregisters_collector_after_every_dpkg_run():
+    # wb-diag-collect's main config is not a dpkg conffile, so an unrelated
+    # `apt upgrade wb-diag-collect` reverts it and silently drops our entry.
+    # A DPkg::Post-Invoke hook must re-run register-diag after every apt run to
+    # heal the entry back in; otherwise the issue #5 AC stops holding after the
+    # next diag-collect upgrade with no re-registration trigger.
+    assert DIAG_REREG_HOOK.is_file()
+    text = DIAG_REREG_HOOK.read_text()
+    assert "DPkg::Post-Invoke" in text
+    assert "register-diag" in text
+    # Guarded on the CLI being present and never fails the apt run.
+    assert "/usr/bin/wb-docker-app" in text
+    assert "|| true" in text
+    # And it is installed into apt.conf.d so apt actually reads it.
+    assert "apt/53wb-docker-app-reg-diag etc/apt/apt.conf.d/" in INSTALL.read_text()
 
 
 @pytest.mark.skipif(

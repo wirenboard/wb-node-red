@@ -364,6 +364,77 @@ def test_register_then_deregister_round_trips(tmp_path):
     assert yaml.safe_load(conf.read_text()) == original
 
 
+# wb-diag-collect's main config is a package-owned conffile, so register/
+# deregister must edit it as text and never reflow it. These tests run without
+# PyYAML (pure-text assertions) so the comment/formatting guarantee is always
+# exercised, not skipped on hosts lacking the optional yaml dep.
+_MAIN_CONF_WITH_COMMENTS = """\
+# wb-diag-collect main config — DO NOT lose this comment.
+timeout: 10  # inline comment on a scalar
+journald_logs:
+  names:
+    - wb-*.service
+commands:
+  - filename: ps_aux  # keep me
+    command: ps aux
+files:
+  - /etc/group
+"""
+
+
+def test_register_preserves_comments_and_foreign_formatting(tmp_path):
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text(_MAIN_CONF_WITH_COMMENTS)
+
+    assert diag.register(conf) is True
+    after = conf.read_text()
+
+    # Our entry landed.
+    assert diag.COLLECTOR_FILENAME in after
+    assert diag.COLLECTOR_CMD in after
+    # Every original comment and inline annotation survived verbatim.
+    assert "# wb-diag-collect main config — DO NOT lose this comment." in after
+    assert "timeout: 10  # inline comment on a scalar" in after
+    assert "- filename: ps_aux  # keep me" in after
+    # No reflow: every original line survives verbatim, in original order.
+    for line in _MAIN_CONF_WITH_COMMENTS.splitlines():
+        assert line in after
+    # Removing our spliced block again yields the original file byte-for-byte.
+    assert diag.deregister(conf) is True
+    assert conf.read_text() == _MAIN_CONF_WITH_COMMENTS
+
+
+def test_register_then_deregister_restores_the_file_byte_for_byte(tmp_path):
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text(_MAIN_CONF_WITH_COMMENTS)
+
+    assert diag.register(conf) is True
+    assert diag.deregister(conf) is True
+    # prerm's promise: the helper leaves the config exactly as it found it.
+    assert conf.read_text() == _MAIN_CONF_WITH_COMMENTS
+
+
+def test_register_is_idempotent_as_pure_text(tmp_path):
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text(_MAIN_CONF_WITH_COMMENTS)
+
+    assert diag.register(conf) is True
+    once = conf.read_text()
+    assert diag.register(conf) is False
+    assert conf.read_text() == once  # no second copy of our block
+
+
+def test_register_appends_commands_section_when_absent(tmp_path):
+    conf = tmp_path / "wb-diag-collect.conf"
+    conf.write_text("timeout: 10\nfiles:\n  - /etc/group\n")
+
+    assert diag.register(conf) is True
+    after = conf.read_text()
+    assert "commands:" in after
+    assert diag.COLLECTOR_FILENAME in after
+    assert diag.deregister(conf) is True
+
+
 def test_cli_register_diag_invokes_the_merge(paths, monkeypatch):
     # The `register-diag` verb (run from postinst) delegates to diag.register.
     called = {}

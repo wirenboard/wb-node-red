@@ -25,7 +25,10 @@ case "$1" in
 		# only its single main config and has no conf.d merge, so the shipped
 		# conf.d drop-in alone is inert; register the collector command into
 		# that main config here. Idempotent, and a no-op if wb-diag-collect
-		# is not installed.
+		# is not installed. That config is owned by wb-diag-collect and is not a
+		# conffile, so a later `apt upgrade wb-diag-collect` reverts it — the
+		# shipped apt.conf.d/53wb-docker-app-reg-diag Post-Invoke hook re-runs
+		# this after every apt run to heal the entry back in.
 		wb-docker-app register-diag
 		;;
 	abort-upgrade | abort-remove | abort-deconfigure) ;;
