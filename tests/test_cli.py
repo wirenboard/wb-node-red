@@ -1,12 +1,13 @@
 """Behavior of the CLI orchestrator (module I).
 
-The orchestrator is deliberately thin glue: it composes the pure cores (A, B, E)
-and the thin wrappers (F, G) and writes the nginx server-block. Tests drive it
-with a fake :class:`Runner` (recording argv, returning canned results) and a
-``Paths`` rooted at ``tmp_path`` — no docker/systemd/nginx is touched.
+The orchestrator is deliberately thin glue over an injected :class:`Runner`.
+Services are CURATED and static: each hardcodes its loopback port and ships its
+own static nginx drop-in, so the helper neither allocates ports nor renders
+nginx at runtime. Its verbs are minimal — ``install``, ``remove``,
+``provision-mqtt``. Tests drive it with a fake :class:`Runner` (recording argv,
+returning canned results) and a ``Paths`` rooted at ``tmp_path`` — no
+docker/systemd/nginx is touched.
 """
-
-import json
 
 import pytest
 
@@ -14,29 +15,8 @@ from wb_docker_app.cli import Helper, Paths, build_parser
 from wb_docker_app.runner import CommandResult
 
 
-# Canonical `docker compose config --format json` for one WB service. The
-# published loopback port here is the runtime source of truth for nginx.
-COMPOSE_CONFIG = {
-    "services": {
-        "node-red": {
-            "image": "registry.wirenboard.com/wb/node-red:4.0.2-wb1",
-            "ports": [
-                {"host_ip": "127.0.0.1", "target": 1880,
-                 "published": "21880", "protocol": "tcp"}
-            ],
-            "labels": {
-                "wb.app": "node-red",
-                "wb.title": "Node-RED",
-                "wb.proxy.port": "1880",
-                "wb.proxy.role": "admin",
-            },
-        }
-    }
-}
-
-
 class FakeRunner:
-    """Records every argv; returns canned compose-config JSON, else rc 0."""
+    """Records every argv; returns rc 0 except a failing `docker network inspect`."""
 
     def __init__(self):
         self.calls = []
@@ -44,15 +24,12 @@ class FakeRunner:
     def run(self, argv, *, check=True, input=None):
         argv = list(argv)
         self.calls.append(argv)
-        stdout = ""
         returncode = 0
-        if "config" in argv:
-            stdout = json.dumps(COMPOSE_CONFIG)
         # On a clean system the `wb` network is absent, so inspect fails — this
         # lets provision_mqtt exercise the create path.
         if tuple(argv[:3]) == ("docker", "network", "inspect"):
             returncode = 1
-        return CommandResult(argv=tuple(argv), returncode=returncode, stdout=stdout)
+        return CommandResult(argv=tuple(argv), returncode=returncode, stdout="")
 
     def issued(self, *needles):
         """True if some recorded call contains all the given substrings."""
@@ -64,32 +41,62 @@ class FakeRunner:
 @pytest.fixture
 def paths(tmp_path):
     return Paths(
-        base_dir=tmp_path / "usr/lib/wb-docker-app",
         data_dir=tmp_path / "mnt/data/wb-docker-apps",
-        nginx_includes=tmp_path / "etc/nginx/includes/default.wb.d",
-        port_registry=tmp_path / "var/lib/wb-docker-app/ports.json",
+        pkg_dir=tmp_path / "usr/lib/wb-docker-app",
         mosquitto_conf_dir=tmp_path / "etc/mosquitto/conf.d",
-        mosquitto_dropin_dir=tmp_path / "etc/systemd/system/mosquitto.service.d",
+        sysctl_file=tmp_path / "etc/sysctl.d/60-wb-docker-app.conf",
+        mqtt_marker_file=tmp_path / "var/lib/wb-docker-app/mqtt-provisioned",
     )
 
 
-def test_install_writes_a_gated_nginx_block_and_brings_the_service_up(paths):
+def test_install_seeds_the_user_layer_and_enables_the_systemd_instance(paths):
     runner = FakeRunner()
     helper = Helper(runner, paths)
 
     helper.install("node-red")
 
-    # nginx server-block written, gated to the descriptor's role, proxying to
-    # the runtime-published loopback port.
-    block = (paths.nginx_includes / "node-red.conf").read_text()
-    assert "auth_request" in block
-    assert 'required_user_type "admin"' in block
-    assert "127.0.0.1:21880" in block
+    # user layer seeded only-if-absent under /mnt/data
+    override = paths.data_dir / "node-red" / "docker-compose.override.yml"
+    assert override.exists()
+    assert (paths.data_dir / "node-red" / "data").is_dir()
 
-    # service brought up and enabled under the templated systemd unit.
-    assert runner.issued("docker", "compose", "up", "-d")
+    # service enabled+started under the templated systemd unit
     assert runner.issued("systemctl", "enable", "--now",
                          "wb-docker-app@node-red.service")
+
+
+def test_install_seeds_the_packages_default_flows_when_absent(paths):
+    # The package ships its default config under <app>/seed/, mirroring the user
+    # layout; install drops it into /mnt/data only-if-absent so Node-RED comes up
+    # with a pre-wired broker node out of the box.
+    seed_flows = paths.pkg_dir / "node-red" / "seed" / "data" / "flows.json"
+    seed_flows.parent.mkdir(parents=True)
+    seed_flows.write_text('[{"id": "wb-mqtt-broker"}]\n')
+
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.install("node-red")
+
+    landed = paths.data_dir / "node-red" / "data" / "flows.json"
+    assert landed.read_text() == '[{"id": "wb-mqtt-broker"}]\n'
+
+
+def test_install_does_not_clobber_a_users_flows(paths):
+    seed_flows = paths.pkg_dir / "node-red" / "seed" / "data" / "flows.json"
+    seed_flows.parent.mkdir(parents=True)
+    seed_flows.write_text('[{"id": "wb-mqtt-broker"}]\n')
+
+    user_flows = paths.data_dir / "node-red" / "data" / "flows.json"
+    user_flows.parent.mkdir(parents=True)
+    user_flows.write_text('[{"id": "user-edit"}]\n')
+
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.install("node-red")
+
+    assert user_flows.read_text() == '[{"id": "user-edit"}]\n'  # user edit survives
 
 
 def test_install_tests_the_nginx_config_before_reloading_it(paths):
@@ -98,8 +105,8 @@ def test_install_tests_the_nginx_config_before_reloading_it(paths):
 
     helper.install("node-red")
 
-    # A bad server-block must never reach a live reload: `nginx -t` gates the
-    # reload, and a failing test aborts before `systemctl reload nginx`.
+    # The static proxy drop-in shipped by the service package must pass
+    # `nginx -t` before the reload; a failing test aborts before reload.
     test_idx = runner.calls.index(["nginx", "-t"])
     reload_idx = runner.calls.index(["systemctl", "reload", "nginx"])
     assert test_idx < reload_idx
@@ -128,49 +135,38 @@ def test_install_aborts_the_reload_when_the_nginx_config_test_fails(paths):
     assert ["systemctl", "reload", "nginx"] not in runner.calls
 
 
-def test_remove_disables_the_unit_and_deletes_the_nginx_block(paths):
-    runner = FakeRunner()
-    helper = Helper(runner, paths)
-    helper.install("node-red")
-    assert (paths.nginx_includes / "node-red.conf").exists()
-
-    helper.remove("node-red")
-
-    assert not (paths.nginx_includes / "node-red.conf").exists()
-    assert runner.issued("systemctl", "disable", "--now",
-                         "wb-docker-app@node-red.service")
-    assert runner.issued("docker", "compose", "down")
-
-
-def test_reinstall_keeps_the_same_port_and_preserves_user_overrides(paths):
+def test_install_does_not_reseed_user_overrides_on_reinstall(paths):
     runner = FakeRunner()
     helper = Helper(runner, paths)
     helper.install("node-red")
 
-    env = paths.data_dir / "node-red" / ".env"
-    first_port = env.read_text()
     override = paths.data_dir / "node-red" / "docker-compose.override.yml"
     override.write_text("services:\n  node-red:\n    mem_limit: 256m\n")
 
     helper.install("node-red")
 
-    assert env.read_text() == first_port  # allocator idempotent, .env not reseeded
     assert "mem_limit: 256m" in override.read_text()  # user edit survives
 
 
-def test_list_returns_app_slugs_from_running_container_labels():
-    from wb_docker_app.runner import CommandResult
+def test_remove_disables_the_unit_without_reloading_nginx_leaving_data_intact(paths):
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+    helper.install("node-red")
+    override = paths.data_dir / "node-red" / "docker-compose.override.yml"
+    assert override.exists()
+    runner.calls.clear()
 
-    class LabelRunner(FakeRunner):
-        def run(self, argv, *, check=True, input=None):
-            self.calls.append(list(argv))
-            return CommandResult(argv=tuple(argv), returncode=0,
-                                 stdout="node-red\nhome-assistant\n")
+    helper.remove("node-red")
 
-    runner = LabelRunner()
-    helper = Helper.__new__(Helper)  # list_apps needs no allocator/paths
-    helper.runner = runner
-    assert helper.list_apps() == ["node-red", "home-assistant"]
+    assert runner.issued("systemctl", "disable", "--now",
+                         "wb-docker-app@node-red.service")
+    # The static drop-in is a dpkg-owned file deleted AFTER this prerm runs, so
+    # remove must NOT reload nginx — the reload happens in the postrm via
+    # reload-proxy, once the file is gone.
+    assert not runner.issued("systemctl", "reload", "nginx")
+    assert not runner.issued("nginx", "-t")
+    # /mnt/data is left intact on remove.
+    assert override.exists()
 
 
 def test_parser_dispatches_install_with_an_app_argument():
@@ -179,62 +175,10 @@ def test_parser_dispatches_install_with_an_app_argument():
     assert args.app == "node-red"
 
 
-# --- day-2 lifecycle verbs (issue #5) ---------------------------------------
-# status/logs/restart/update already exist in cli.py; these pin their behaviour.
-
-
-def test_status_queries_the_systemd_instance(paths):
-    runner = FakeRunner()
-    helper = Helper(runner, paths)
-
-    helper.status("node-red")
-
-    assert runner.issued("systemctl", "status",
-                         "wb-docker-app@node-red.service")
-
-
-def test_restart_restarts_the_systemd_instance(paths):
-    runner = FakeRunner()
-    helper = Helper(runner, paths)
-
-    helper.restart("node-red")
-
-    assert runner.issued("systemctl", "restart",
-                         "wb-docker-app@node-red.service")
-
-
-def test_logs_tails_the_instance_journal(paths):
-    runner = FakeRunner()
-    helper = Helper(runner, paths)
-
-    helper.logs("node-red")
-
-    # journalctl scoped to the instance unit, bounded tail.
-    assert runner.issued("journalctl", "-u",
-                         "wb-docker-app@node-red.service", "-n", "200")
-
-
-def test_update_pulls_the_new_image_and_recreates_the_container(paths):
-    runner = FakeRunner()
-    helper = Helper(runner, paths)
-
-    helper.update("node-red")
-
-    # explicit upgrade: pull the bumped tag then up -d to recreate.
-    assert runner.issued("docker", "compose", "pull")
-    assert runner.issued("docker", "compose", "up", "-d")
-
-
-def test_parser_dispatches_each_lifecycle_verb_with_an_app_argument():
-    for verb in ("status", "logs", "restart", "update"):
-        args = build_parser().parse_args([verb, "node-red"])
-        assert args.command == verb
-        assert args.app == "node-red"
-
-
-def test_parser_dispatches_list_without_an_app_argument():
-    args = build_parser().parse_args(["list"])
-    assert args.command == "list"
+def test_parser_dispatches_remove_with_an_app_argument():
+    args = build_parser().parse_args(["remove", "node-red"])
+    assert args.command == "remove"
+    assert args.app == "node-red"
 
 
 def test_parser_dispatches_provision_mqtt_without_an_app_argument():
@@ -242,9 +186,53 @@ def test_parser_dispatches_provision_mqtt_without_an_app_argument():
     assert args.command == "provision-mqtt"
 
 
+def test_parser_dispatches_reload_proxy_without_an_app_argument():
+    args = build_parser().parse_args(["reload-proxy"])
+    assert args.command == "reload-proxy"
+
+
+def test_reload_proxy_reloads_only_after_a_passing_config_test(paths):
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.reload_proxy()
+
+    test_idx = runner.calls.index(["nginx", "-t"])
+    reload_idx = runner.calls.index(["systemctl", "reload", "nginx"])
+    assert test_idx < reload_idx
+
+
+def test_reload_proxy_skips_the_reload_and_never_raises_on_a_bad_config(paths):
+    # Tolerant on purpose: an unrelated broken nginx config elsewhere must not
+    # block package removal. `nginx -t` is run unchecked; on a non-zero result
+    # the reload is skipped and nothing raises.
+    class BadConfigRunner(FakeRunner):
+        def run(self, argv, *, check=True, input=None):
+            if list(argv) == ["nginx", "-t"]:
+                self.calls.append(list(argv))
+                return CommandResult(argv=tuple(argv), returncode=1, stdout="")
+            return super().run(argv, check=check, input=input)
+
+    runner = BadConfigRunner()
+    helper = Helper(runner, paths)
+
+    helper.reload_proxy()  # must not raise
+
+    assert ["systemctl", "reload", "nginx"] not in runner.calls
+
+
+def test_parser_rejects_the_dropped_day2_verbs():
+    # status/logs/restart/update/list are no longer helper verbs; use systemctl
+    # and docker directly. The parser must reject them.
+    for verb in ("status", "logs", "restart", "update", "list"):
+        with pytest.raises(SystemExit):
+            build_parser().parse_args([verb, "node-red"])
+
+
 def test_provision_mqtt_creates_the_network_and_restarts_mosquitto_once(paths):
     # MQTT connectivity is provisioned by the helper at install time: it creates
-    # the `wb` docker network and restarts mosquitto exactly once (design.md §3.7).
+    # the `wb` docker network, sets ip_nonlocal_bind and restarts mosquitto
+    # exactly once (design.md §3.7).
     runner = FakeRunner()
     helper = Helper(runner, paths)
 
@@ -255,14 +243,29 @@ def test_provision_mqtt_creates_the_network_and_restarts_mosquitto_once(paths):
         c for c in runner.calls if c == ["systemctl", "restart", "mosquitto"]
     ]
     assert restarts == [["systemctl", "restart", "mosquitto"]]
-    # drop-ins written under the configured /etc dirs
+    # listener drop-in + sysctl drop-in written and the sysctl applied
     assert (paths.mosquitto_conf_dir / "wb.conf").exists()
-    assert (paths.mosquitto_dropin_dir / "after-docker.conf").exists()
+    assert paths.sysctl_file.exists()
+    assert runner.issued("sysctl", "-p", str(paths.sysctl_file))
+
+
+def test_provision_mqtt_writes_no_after_docker_dropin(paths):
+    # The boot-timing crux: mosquitto keeps its early boot; nothing the helper
+    # writes may order it After=docker.service.
+    runner = FakeRunner()
+    helper = Helper(runner, paths)
+
+    helper.provision_mqtt()
+
+    assert "After=docker.service" not in (
+        paths.mosquitto_conf_dir / "wb.conf"
+    ).read_text()
+    assert "After=docker.service" not in paths.sysctl_file.read_text()
 
 
 def test_a_service_install_never_touches_mosquitto(paths):
     # Provisioning is the helper's job, run once at helper install — NOT per
-    # service. Installing a (second) service must never restart mosquitto.
+    # service. Installing a service must never restart mosquitto.
     runner = FakeRunner()
     helper = Helper(runner, paths)
 
@@ -270,188 +273,3 @@ def test_a_service_install_never_touches_mosquitto(paths):
 
     assert not runner.issued("systemctl", "restart", "mosquitto")
     assert not runner.issued("docker", "network", "create")
-
-
-# --- wb-diag-collect integration (issue #5) ---------------------------------
-#
-# The released wb-diag-collect reads ONLY its single main config (no conf.d
-# merge), so the shipped drop-in is inert on a current controller. The helper
-# closes the gap by registering its collector `command` into that main config
-# at install and removing it at uninstall. These tests pin that merge — pure,
-# idempotent, and surgical (it touches only our entry).
-
-from wb_docker_app import diag  # noqa: E402
-
-
-def _yaml_or_skip():
-    return pytest.importorskip("yaml")
-
-
-_MAIN_CONF = """\
-timeout: 10
-journald_logs:
-  names:
-    - wb-*.service
-commands:
-  - filename: ps_aux
-    command: ps aux
-files:
-  - /etc/group
-"""
-
-
-def test_register_adds_the_collector_command_to_main_config(tmp_path):
-    yaml = _yaml_or_skip()
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text(_MAIN_CONF)
-
-    assert diag.register(conf) is True
-
-    data = yaml.safe_load(conf.read_text())
-    ours = [c for c in data["commands"] if c["filename"] == diag.COLLECTOR_FILENAME]
-    assert len(ours) == 1
-    assert ours[0]["command"] == diag.COLLECTOR_CMD
-    # Pre-existing entries and other keys are preserved untouched.
-    assert {"filename": "ps_aux", "command": "ps aux"} in data["commands"]
-    assert data["timeout"] == 10
-    assert data["files"] == ["/etc/group"]
-
-
-def test_register_is_idempotent(tmp_path):
-    _yaml_or_skip()
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text(_MAIN_CONF)
-
-    assert diag.register(conf) is True
-    after_first = conf.read_text()
-    # Second run is a no-op: returns False and does not duplicate our entry.
-    assert diag.register(conf) is False
-    assert conf.read_text() == after_first
-
-
-def test_register_is_a_noop_when_diag_collect_is_not_installed(tmp_path):
-    # No config file => wb-diag-collect absent => nothing to integrate with.
-    missing = tmp_path / "absent.conf"
-    assert diag.register(missing) is False
-    assert not missing.exists()
-
-
-def test_deregister_removes_only_our_entry(tmp_path):
-    yaml = _yaml_or_skip()
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text(_MAIN_CONF)
-    diag.register(conf)
-
-    assert diag.deregister(conf) is True
-
-    data = yaml.safe_load(conf.read_text())
-    assert all(c["filename"] != diag.COLLECTOR_FILENAME for c in data["commands"])
-    # The pre-existing command survives.
-    assert {"filename": "ps_aux", "command": "ps aux"} in data["commands"]
-    # Deregistering again is a no-op.
-    assert diag.deregister(conf) is False
-
-
-def test_register_then_deregister_round_trips(tmp_path):
-    yaml = _yaml_or_skip()
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text(_MAIN_CONF)
-    original = yaml.safe_load(conf.read_text())
-
-    diag.register(conf)
-    diag.deregister(conf)
-
-    assert yaml.safe_load(conf.read_text()) == original
-
-
-# wb-diag-collect's main config is a package-owned conffile, so register/
-# deregister must edit it as text and never reflow it. These tests run without
-# PyYAML (pure-text assertions) so the comment/formatting guarantee is always
-# exercised, not skipped on hosts lacking the optional yaml dep.
-_MAIN_CONF_WITH_COMMENTS = """\
-# wb-diag-collect main config — DO NOT lose this comment.
-timeout: 10  # inline comment on a scalar
-journald_logs:
-  names:
-    - wb-*.service
-commands:
-  - filename: ps_aux  # keep me
-    command: ps aux
-files:
-  - /etc/group
-"""
-
-
-def test_register_preserves_comments_and_foreign_formatting(tmp_path):
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text(_MAIN_CONF_WITH_COMMENTS)
-
-    assert diag.register(conf) is True
-    after = conf.read_text()
-
-    # Our entry landed.
-    assert diag.COLLECTOR_FILENAME in after
-    assert diag.COLLECTOR_CMD in after
-    # Every original comment and inline annotation survived verbatim.
-    assert "# wb-diag-collect main config — DO NOT lose this comment." in after
-    assert "timeout: 10  # inline comment on a scalar" in after
-    assert "- filename: ps_aux  # keep me" in after
-    # No reflow: every original line survives verbatim, in original order.
-    for line in _MAIN_CONF_WITH_COMMENTS.splitlines():
-        assert line in after
-    # Removing our spliced block again yields the original file byte-for-byte.
-    assert diag.deregister(conf) is True
-    assert conf.read_text() == _MAIN_CONF_WITH_COMMENTS
-
-
-def test_register_then_deregister_restores_the_file_byte_for_byte(tmp_path):
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text(_MAIN_CONF_WITH_COMMENTS)
-
-    assert diag.register(conf) is True
-    assert diag.deregister(conf) is True
-    # prerm's promise: the helper leaves the config exactly as it found it.
-    assert conf.read_text() == _MAIN_CONF_WITH_COMMENTS
-
-
-def test_register_is_idempotent_as_pure_text(tmp_path):
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text(_MAIN_CONF_WITH_COMMENTS)
-
-    assert diag.register(conf) is True
-    once = conf.read_text()
-    assert diag.register(conf) is False
-    assert conf.read_text() == once  # no second copy of our block
-
-
-def test_register_appends_commands_section_when_absent(tmp_path):
-    conf = tmp_path / "wb-diag-collect.conf"
-    conf.write_text("timeout: 10\nfiles:\n  - /etc/group\n")
-
-    assert diag.register(conf) is True
-    after = conf.read_text()
-    assert "commands:" in after
-    assert diag.COLLECTOR_FILENAME in after
-    assert diag.deregister(conf) is True
-
-
-def test_cli_register_diag_invokes_the_merge(paths, monkeypatch):
-    # The `register-diag` verb (run from postinst) delegates to diag.register.
-    called = {}
-    monkeypatch.setattr(diag, "register", lambda: called.setdefault("reg", True))
-    Helper(FakeRunner(), paths).register_diag()
-    assert called.get("reg") is True
-
-
-def test_cli_deregister_diag_invokes_the_merge(paths, monkeypatch):
-    called = {}
-    monkeypatch.setattr(diag, "deregister", lambda: called.setdefault("dereg", True))
-    Helper(FakeRunner(), paths).deregister_diag()
-    assert called.get("dereg") is True
-
-
-def test_parser_dispatches_register_and_deregister_diag():
-    assert build_parser().parse_args(["register-diag"]).command == "register-diag"
-    assert (
-        build_parser().parse_args(["deregister-diag"]).command == "deregister-diag"
-    )

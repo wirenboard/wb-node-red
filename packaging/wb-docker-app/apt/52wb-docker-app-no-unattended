@@ -17,9 +17,9 @@
 //
 // Shipped by the wb-docker-app helper package (one per system): it blacklists
 // itself and the in-tree node-red service package. Because the entries are
-// end-anchored, a new service package whose slug does not already match an
-// entry below ships its own matching drop-in (e.g. wb-echo ships
-// etc/apt/apt.conf.d/52wb-echo-no-unattended with "wb-echo$").
+// end-anchored, a new curated service package whose slug does not already match
+// an entry below ships its own matching end-anchored drop-in under
+// etc/apt/apt.conf.d/.
 Unattended-Upgrade::Package-Blacklist {
 	"wb-docker-app$";
 	"wb-node-red$";

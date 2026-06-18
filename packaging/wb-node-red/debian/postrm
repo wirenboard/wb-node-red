@@ -1,0 +1,30 @@
+#!/bin/sh
+# postrm for wb-node-red (docs/adr/0003).
+#
+# Thin glue: source the shared library and delegate the proxy reload to the
+# helper. Runs AFTER dpkg has deleted the static nginx drop-in
+# (/etc/nginx/includes/default.wb.d/node-red.conf), so the reload here drops the
+# now-stale server-block instead of leaving nginx proxying to a dead upstream.
+# Not reloaded on upgrade: the new install reloads its own fresh drop-in.
+set -e
+
+LIB=/usr/lib/wb-docker-app/lib/wb-docker-app.sh
+
+case "$1" in
+	remove | purge)
+		if [ -f "$LIB" ]; then
+			# shellcheck source=/dev/null
+			. "$LIB"
+			wb_docker_app_reload_proxy
+		fi
+		;;
+	upgrade | failed-upgrade | abort-install | abort-upgrade | disappear) ;;
+	*)
+		echo "postrm called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

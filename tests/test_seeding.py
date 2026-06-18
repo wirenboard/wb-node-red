@@ -6,7 +6,7 @@ edits must survive byte-for-byte across re-runs. These tests exercise that on
 a real filesystem under ``tmp_path``.
 """
 
-from wb_docker_app.seeding import seed_app_dir
+from wb_docker_app.seeding import seed_app_dir, seed_tree
 
 
 def test_seeds_files_and_dirs_when_absent_and_reports_them(tmp_path):
@@ -58,3 +58,53 @@ def test_nested_relative_file_path_is_created_with_parents(tmp_path):
 
     assert (app_root / "data" / "settings" / "config.json").read_text() == "{}\n"
     assert created == ["data/settings/config.json"]
+
+
+# --- seed_tree: a package's per-app default-config tree ----------------------
+
+
+def test_seed_tree_copies_a_nested_file_when_absent(tmp_path):
+    src = tmp_path / "seed"
+    (src / "data").mkdir(parents=True)
+    (src / "data" / "flows.json").write_text("[]\n")
+    dst = tmp_path / "node-red"
+
+    created = seed_tree(src, dst)
+
+    assert (dst / "data" / "flows.json").read_text() == "[]\n"
+    assert created == ["data/flows.json"]
+
+
+def test_seed_tree_does_not_overwrite_an_existing_destination(tmp_path):
+    src = tmp_path / "seed"
+    (src / "data").mkdir(parents=True)
+    (src / "data" / "flows.json").write_text("[]\n")
+    dst = tmp_path / "node-red"
+    (dst / "data").mkdir(parents=True)
+    sentinel = dst / "data" / "flows.json"
+    sentinel.write_text('[{"id": "user-edit"}]\n')
+
+    created = seed_tree(src, dst)
+
+    assert sentinel.read_text() == '[{"id": "user-edit"}]\n'  # user edit survives
+    assert created == []
+
+
+def test_seed_tree_returns_empty_when_src_dir_is_missing(tmp_path):
+    src = tmp_path / "does-not-exist"
+    dst = tmp_path / "node-red"
+
+    assert seed_tree(src, dst) == []
+
+
+def test_seed_tree_is_idempotent_on_re_run(tmp_path):
+    src = tmp_path / "seed"
+    (src / "data").mkdir(parents=True)
+    (src / "data" / "flows.json").write_text("[]\n")
+    dst = tmp_path / "node-red"
+
+    first = seed_tree(src, dst)
+    second = seed_tree(src, dst)
+
+    assert first == ["data/flows.json"]
+    assert second == []

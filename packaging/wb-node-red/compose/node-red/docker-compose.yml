@@ -2,24 +2,25 @@
 #
 # Package-owned base layer, installed to /usr/lib/wb-docker-app/node-red/ and
 # freely overwritten on upgrade. The user layer (docker-compose.override.yml,
-# .env, data/) is seeded only-if-absent to /mnt/data/wb-docker-apps/node-red/
-# by the helper and merged on top at runtime (`-f base -f override`). The wb.*
-# labels are the single source of truth the helper reads (descriptor reader)
-# to render the nginx block and list installed apps.
+# data/) is seeded only-if-absent to /mnt/data/wb-docker-apps/node-red/ by the
+# helper and merged on top at runtime (`-f base -f override`).
+#
+# node-red is a STATIC, curated service: its internal loopback port is hardcoded
+# (no dynamic allocation), and the matching nginx proxy is shipped as a static
+# drop-in by this package. The wb.* labels are kept as plain metadata and are no
+# longer read by the helper.
 services:
   node-red:
     image: registry.wirenboard.com/wb/node-red:4.0.2-wb1
     restart: unless-stopped
     networks: [wb]
     ports:
-      - "127.0.0.1:${WB_INTERNAL_PORT:-21880}:1880"
+      - "127.0.0.1:21880:1880"
     volumes:
       - /mnt/data/wb-docker-apps/node-red/data:/data
     labels:
       wb.app: node-red
       wb.title: "Node-RED"
-      wb.proxy.port: "1880"
-      wb.proxy.role: admin
 
 networks:
   wb:

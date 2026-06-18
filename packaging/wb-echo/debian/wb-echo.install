@@ -1,2 +1,0 @@
-compose/echo/docker-compose.yml usr/lib/wb-docker-app/echo/
-apt/52wb-echo-no-unattended etc/apt/apt.conf.d/

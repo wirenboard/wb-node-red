@@ -1,9 +1,11 @@
-"""MQTT / docker-network config renderer (module D).
+"""MQTT / docker-network config renderer.
 
-Renders the parameters of the dedicated docker network ``wb`` and the mosquitto
-drop-in text that binds a listener on that network's gateway (design.md §3.7).
-All functions here are pure: they return config *text* / *params* and never
-touch docker or systemctl — applying them is the provisioner's job (module H).
+Renders the parameters of the dedicated docker network ``wb``, the mosquitto
+drop-in text that binds a listener on that network's gateway, and the sysctl
+drop-in that lets mosquitto bind that gateway IP at early boot before docker
+exists (docs/adr/0004). All functions here are pure: they return config
+*text* / *params* and never touch docker or systemctl — applying them is the
+provisioner's job.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ class NetworkError(ValueError):
 
 @dataclass(frozen=True)
 class WbNetwork:
-    """Parameters of the dedicated docker network ``wb`` (design.md §3.7).
+    """Parameters of the dedicated docker network ``wb`` (docs/adr/0004).
 
     Attributes:
         subnet: the fixed CIDR of the network (e.g. ``172.29.0.0/24``).
@@ -48,22 +50,22 @@ def render_mosquitto_listener(gateway: str, port: int) -> str:
     """Render a mosquitto drop-in binding ``listener <port> <gateway>``."""
     # ``allow_anonymous`` follows the ``listener`` line so it scopes to *this*
     # listener: anonymous access is acceptable here because the listener binds
-    # the docker-network gateway only (design.md §3.7); broker ACL/passwords are
+    # the docker-network gateway only (docs/adr/0004); broker ACL/passwords are
     # out of scope per the PRD.
     return f"listener {port} {gateway}\nallow_anonymous true\n"
 
 
-def render_mosquitto_after_docker_dropin() -> str:
-    """Render the systemd drop-in ordering mosquitto after ``docker.service``.
+def render_nonlocal_bind_sysctl() -> str:
+    """Render the sysctl drop-in enabling ``net.ipv4.ip_nonlocal_bind``.
 
-    The gateway listener (see :func:`render_mosquitto_listener`) can only bind
-    once docker has brought up the ``wb`` network, so mosquitto must start after
-    docker (design.md §3.7 boot-order). ``Wants`` (not ``Requires``) keeps the
-    broker startable even if docker is absent — it just won't have the gateway
-    listener until docker comes up.
+    Mosquitto MUST keep its normal EARLY boot: the whole WB stack (drivers,
+    wb-rules, homeui) depends on the broker, so gating it behind docker with an
+    ``After=docker.service`` ordering would gate all controller MQTT behind
+    Docker on every boot — unacceptable. Instead we let mosquitto bind the
+    not-yet-existent ``wb`` gateway IP at early boot (the way keepalived binds a
+    VIP that isn't up yet) by enabling ``ip_nonlocal_bind`` system-wide. The
+    gateway listener (see :func:`render_mosquitto_listener`) then goes live the
+    moment Docker brings up the ``wb`` network, with no ordering coupling between
+    mosquitto and docker (docs/adr/0004).
     """
-    return (
-        "[Unit]\n"
-        "After=docker.service\n"
-        "Wants=docker.service\n"
-    )
+    return "net.ipv4.ip_nonlocal_bind = 1\n"

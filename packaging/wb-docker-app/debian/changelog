@@ -1,3 +1,22 @@
+wb-docker-app (0.3.0) stable; urgency=medium
+
+  * Minimal-first cut (docs/adr/0003): the helper is now a thin lifecycle glue
+    over curated, static services. Removed:
+    - wb-diag-collect integration (collector script + diag drop-in);
+    - the runtime port allocator, the nginx renderer and the app descriptor;
+    - the day-2 sugar verbs (status/logs/restart/update/list) — use systemctl
+      and docker directly.
+  * Services are now static: each ships its own base compose with a fixed
+    loopback port and its own static nginx drop-in, so the helper neither reads
+    compose labels nor renders nginx at runtime. New tolerant `reload-proxy`
+    verb reloads nginx from a service's postrm after the drop-in is removed.
+  * MQTT boot-timing (docs/adr/0004): mosquitto keeps its early boot via the
+    net.ipv4.ip_nonlocal_bind sysctl instead of an After=docker.service
+    ordering; the one-time provision now writes a marker only after a successful
+    restart so a failed restart is retried.
+
+ -- Wiren Board Team <info@wirenboard.com>  Thu, 18 Jun 2026 12:00:00 +0300
+
 wb-docker-app (0.2.0) stable; urgency=medium
 
   * Packaging tails for day-2 lifecycle & observability (issue #5):
@@ -8,7 +27,7 @@ wb-docker-app (0.2.0) stable; urgency=medium
     - documented downgrade/rollback (apt downgrade) and the pre-major-upgrade
       data-backup warning (design.md §3.11.1).
 
- -- Wiren Board Team <info@wirenboard.com>  Mon, 02 Jun 2026 00:00:00 +0000
+ -- Wiren Board Team <info@wirenboard.com>  Tue, 02 Jun 2026 00:00:00 +0000
 
 wb-docker-app (0.1.0) stable; urgency=medium
 

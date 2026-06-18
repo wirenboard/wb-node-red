@@ -1,0 +1,43 @@
+[
+    {
+        "id": "wb-mqtt-broker",
+        "type": "mqtt-broker",
+        "name": "Wiren Board (local)",
+        "broker": "172.29.0.1",
+        "port": "11883",
+        "clientid": "",
+        "autoConnect": true,
+        "keepalive": "60",
+        "cleansession": true
+    },
+    {
+        "id": "wb-flow-tab",
+        "type": "tab",
+        "label": "Wiren Board"
+    },
+    {
+        "id": "wb-devices-in",
+        "type": "mqtt in",
+        "z": "wb-flow-tab",
+        "name": "WB devices",
+        "topic": "/devices/#",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "wb-mqtt-broker",
+        "x": 170,
+        "y": 120,
+        "wires": [["wb-debug"]]
+    },
+    {
+        "id": "wb-debug",
+        "type": "debug",
+        "z": "wb-flow-tab",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "x": 420,
+        "y": 120,
+        "wires": []
+    }
+]

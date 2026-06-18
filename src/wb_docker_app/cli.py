@@ -1,52 +1,60 @@
-"""CLI / orchestrator (module I).
+"""CLI / orchestrator.
 
-Intentionally thin glue: composes the pure cores (A descriptor reader, B nginx
-render, E seeding) and the thin wrappers (F compose-runner, G systemd manager)
-into the user-facing verbs of ``wb-docker-app`` — ``install/remove/status/logs/
-restart/update/list`` (design.md §3.10, §4). The system is reached only through
-an injected :class:`Runner`, so the whole flow is unit-testable with a fake.
+Intentionally thin glue over an injected :class:`Runner`, so the whole flow is
+unit-testable with a fake. WB ships a small set of CURATED, static services:
+each one hardcodes its loopback port and ships its own static nginx drop-in, so
+the helper no longer reads compose labels, allocates ports, or renders nginx at
+runtime. The verbs are therefore minimal (docs/adr/0003 minimal-first):
 
-NOTE: the exact mechanism for injecting the allocated loopback port into compose
-(here: an ``.env`` ``WB_INTERNAL_PORT`` consumed by the base compose) is an open
-item to confirm on a controller — design.md §5.
+* ``provision-mqtt`` — system-level, run once at helper install: create the
+  ``wb`` network, set ip_nonlocal_bind, install the mosquitto listener, restart
+  mosquitto once.
+* ``install <app>`` — seed the user layer, enable+start the systemd instance,
+  validate and reload nginx (the service package already dropped its static
+  proxy config in place).
+* ``remove <app>`` — disable+stop the systemd instance. ``/mnt/data`` is left
+  intact. The static drop-in is a dpkg-owned file, so the proxy reload happens
+  in the service's postrm (via ``reload-proxy``), not here.
+* ``reload-proxy`` — tolerant ``nginx -t`` + reload, run from the service's
+  postrm after dpkg deletes the static drop-in.
+
+Day-2 operations (status/logs/restart/update/list) are intentionally NOT helper
+verbs: use ``systemctl`` and ``docker`` directly.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from . import diag
-from .compose import ComposeRunner
-from .descriptor import read_descriptor
 from .mqtt_provision import MqttProvisioner
-from .nginx import render_server_block
-from .ports import PortAllocator
 from .runner import Runner, SubprocessRunner
-from .seeding import seed_app_dir
+from .seeding import seed_app_dir, seed_tree
 from .systemd import SystemdInstanceManager
 
 
 @dataclass
 class Paths:
-    """Filesystem layout (design.md §3.6). Overridable for tests."""
+    """Filesystem layout (docs/adr/0003 minimal-first). Overridable for tests."""
 
-    base_dir: Path = Path("/usr/lib/wb-docker-app")
     data_dir: Path = Path("/mnt/data/wb-docker-apps")
-    nginx_includes: Path = Path("/etc/nginx/includes/default.wb.d")
-    port_registry: Path = Path("/var/lib/wb-docker-app/ports.json")
-    # MQTT connectivity (design.md §3.7): the helper's own mosquitto gateway
-    # listener drop-in and the ``After=docker.service`` systemd drop-in. Both
-    # live under /etc so they survive package upgrades and edits are explicit.
+    # Package-owned, read-only payload root (the .deb installs here). Each
+    # service ships its base compose and its ``<app>/seed/`` default-config tree
+    # under this prefix.
+    pkg_dir: Path = Path("/usr/lib/wb-docker-app")
+    # MQTT connectivity (docs/adr/0004 mqtt boot-timing): the helper's own
+    # mosquitto gateway listener drop-in and the ip_nonlocal_bind sysctl drop-in.
+    # Both live under /etc so they survive package upgrades and edits are
+    # explicit.
     mosquitto_conf_dir: Path = Path("/etc/mosquitto/conf.d")
-    mosquitto_dropin_dir: Path = Path(
-        "/etc/systemd/system/mosquitto.service.d"
-    )
+    sysctl_file: Path = Path("/etc/sysctl.d/60-wb-docker-app.conf")
+    # Marker written ONLY after a successful mosquitto restart so a failed
+    # restart leaves it stale/absent and the next provision retries.
+    mqtt_marker_file: Path = Path("/var/lib/wb-docker-app/mqtt-provisioned")
 
 
-# Dedicated docker network for container<->broker connectivity (design.md §3.7).
+# Dedicated docker network for container<->broker connectivity (docs/adr/0004).
 # The subnet is fixed and chosen to avoid WB-used ranges; gateway is where
 # mosquitto binds its extra listener and where containers reach the broker.
 # HITL: the subnet choice and bind-on-boot behaviour need controller validation.
@@ -55,7 +63,7 @@ WB_NETWORK_GATEWAY = "172.29.0.1"
 WB_MQTT_LISTENER_PORT = 11883
 
 
-# Default user-layer templates, seeded only-if-absent (module E).
+# Default user-layer override template, seeded only-if-absent.
 _OVERRIDE_TEMPLATE = (
     "# wb-docker-app: your overrides for this service.\n"
     "# Edits here survive package upgrades.\n"
@@ -65,166 +73,113 @@ _OVERRIDE_TEMPLATE = (
 
 @dataclass
 class Helper:
-    """Orchestrates the per-app lifecycle over the cores and wrappers."""
+    """Orchestrates the per-app lifecycle over the seeding core and wrappers."""
 
     runner: Runner
     paths: Paths
-    allocator: PortAllocator | None = field(default=None)
 
     def __post_init__(self):
-        if self.allocator is None:
-            self.paths.port_registry.parent.mkdir(parents=True, exist_ok=True)
-            self.allocator = PortAllocator(self.paths.port_registry)
         self.systemd = SystemdInstanceManager(self.runner)
 
     def provision_mqtt(self) -> None:
-        """Provision container<->broker connectivity ONCE (design.md §3.7).
+        """Provision container<->broker connectivity ONCE (docs/adr/0004).
 
         Run at *helper* install (wb-docker-app postinst), not per service: it
-        creates the ``wb`` docker network if absent, installs the mosquitto
-        gateway listener and the ``After=docker.service`` drop-in, and restarts
-        mosquitto a single time. Re-running is idempotent — the network is only
-        created when absent and the drop-ins are rewritten with identical text —
-        so installing a second service (which does NOT call this) never restarts
-        mosquitto again.
+        creates the ``wb`` docker network if absent, sets ip_nonlocal_bind so
+        mosquitto can bind the gateway IP at early boot, installs the mosquitto
+        gateway listener, and restarts mosquitto a single time. Re-running is
+        idempotent — the network is only created when absent and the drop-ins
+        are rewritten only when their text drifts — so installing a service
+        (which does NOT call this) never restarts mosquitto again.
         """
         self.paths.mosquitto_conf_dir.mkdir(parents=True, exist_ok=True)
-        self.paths.mosquitto_dropin_dir.mkdir(parents=True, exist_ok=True)
+        self.paths.sysctl_file.parent.mkdir(parents=True, exist_ok=True)
         MqttProvisioner(
             self.runner,
             subnet=WB_NETWORK_SUBNET,
             gateway=WB_NETWORK_GATEWAY,
             listener_port=WB_MQTT_LISTENER_PORT,
             mosquitto_conf_dir=self.paths.mosquitto_conf_dir,
-            mosquitto_dropin_dir=self.paths.mosquitto_dropin_dir,
+            sysctl_file=self.paths.sysctl_file,
+            marker_file=self.paths.mqtt_marker_file,
         ).provision()
 
-    def register_diag(self) -> None:
-        """Make services visible in wb-diag-collect (design.md §3.5.1, #5).
-
-        Registers the collector command into wb-diag-collect's single main
-        config, because the released tool has no conf.d merge (see diag.py).
-        Run once at helper install; idempotent and a no-op when wb-diag-collect
-        is not installed.
-        """
-        diag.register()
-
-    def deregister_diag(self) -> None:
-        """Remove the collector command from wb-diag-collect's main config.
-
-        Inverse of :meth:`register_diag`, run when the helper is removed so the
-        helper leaves wb-diag-collect's config as it found it.
-        """
-        diag.deregister()
-
-    def _compose(self, app: str) -> ComposeRunner:
-        return ComposeRunner(
-            base_path=self.paths.base_dir / app / "docker-compose.yml",
-            override_path=self.paths.data_dir / app / "docker-compose.override.yml",
-            project_name=f"wb-{app}",
-            runner=self.runner,
-            # The allocated WB_INTERNAL_PORT lives in the seeded .env under the
-            # user-layer data dir, NOT next to the base compose; point compose
-            # at it explicitly so up/down honour the allocation (design.md §3.6).
-            env_file=self.paths.data_dir / app / ".env",
-        )
-
     def install(self, app: str) -> None:
-        internal_port = self.allocator.allocate(app)
+        """Bring a curated service up (docs/adr/0003 minimal-first).
+
+        Seed the user layer only-if-absent, then drop the package's default
+        config (e.g. Node-RED's ``data/flows.json``) from its ``<app>/seed/``
+        tree into that layer — also only-if-absent, so a user's edits survive.
+        Enable+start the systemd instance, and reload nginx so the static proxy
+        drop-in the service package shipped goes live. No port allocation, no
+        nginx generation, no descriptor read — the service is static.
+        """
         seed_app_dir(
             self.paths.data_dir / app,
-            files={
-                ".env": f"WB_INTERNAL_PORT={internal_port}\n",
-                "docker-compose.override.yml": _OVERRIDE_TEMPLATE,
-            },
+            files={"docker-compose.override.yml": _OVERRIDE_TEMPLATE},
             dirs=["data"],
         )
-
-        compose = self._compose(app)
-        compose.pull()
-        compose.up()
-
-        descriptor = read_descriptor(json.loads(compose.config()))
-        block = render_server_block(descriptor)
-        self.paths.nginx_includes.mkdir(parents=True, exist_ok=True)
-        (self.paths.nginx_includes / f"{app}.conf").write_text(block)
+        seed_tree(self.paths.pkg_dir / app / "seed", self.paths.data_dir / app)
+        self.systemd.enable_now(app)
         self._reload_nginx()
 
-        self.systemd.enable_now(app)
-
     def remove(self, app: str) -> None:
+        """Tear a curated service down, leaving ``/mnt/data`` intact.
+
+        Disable+stop the systemd instance only. The static proxy drop-in is a
+        dpkg-owned file that the package deletes AFTER this prerm runs, so the
+        proxy reload that drops the now-stale server-block happens in the
+        service's postrm (via ``reload-proxy``), not here. The user layer under
+        ``/mnt/data`` is deliberately preserved.
+        """
         self.systemd.disable(app)
-        self._compose(app).down()
-        block = self.paths.nginx_includes / f"{app}.conf"
-        if block.exists():
-            block.unlink()
-            self._reload_nginx()
-        self.allocator.release(app)
+
+    def reload_proxy(self) -> None:
+        """Tolerant proxy reload, run from a service's postrm.
+
+        Run after dpkg has deleted the service's static nginx drop-in, so the
+        reload drops the now-stale server-block. Tolerant on purpose: ``nginx
+        -t`` runs unchecked and the reload only follows on a clean config, so an
+        unrelated broken nginx config elsewhere can't block package removal.
+        Never raises.
+        """
+        test = self.runner.run(["nginx", "-t"], check=False)
+        if test.returncode == 0:
+            self.runner.run(["systemctl", "reload", "nginx"])
 
     def _reload_nginx(self) -> None:
         """Validate the config, then reload — never reload a broken config.
 
         ``nginx -t`` exits non-zero on a bad config; the checked run raises
-        before the reload so a malformed server-block can't take the whole
-        proxy (and thus the WB web UI) down (design.md §3.8, §3.9).
+        before the reload so a malformed NEW drop-in can't take the whole proxy
+        (and thus the WB web UI) down. The 401-redirect intent now lives in the
+        static node-red.conf (docs/adr/0003).
         """
         self.runner.run(["nginx", "-t"])
         self.runner.run(["systemctl", "reload", "nginx"])
-
-    def update(self, app: str) -> None:
-        compose = self._compose(app)
-        compose.pull()
-        compose.up()
-
-    def restart(self, app: str) -> None:
-        self.systemd.restart(app)
-
-    def status(self, app: str):
-        return self.systemd.status(app)
-
-    def logs(self, app: str):
-        return self.runner.run(
-            ["journalctl", "-u", f"wb-docker-app@{app}.service", "-n", "200"],
-            check=False,
-        )
-
-    def list_apps(self) -> list[str]:
-        result = self.runner.run(
-            ["docker", "ps", "--filter", "label=wb.app",
-             "--format", "{{.Label \"wb.app\"}}"],
-            check=False,
-        )
-        return [line for line in result.stdout.splitlines() if line.strip()]
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="wb-docker-app")
     sub = parser.add_subparsers(dest="command", required=True)
-    for verb in ("install", "remove", "status", "logs", "restart", "update"):
+    for verb in ("install", "remove"):
         p = sub.add_parser(verb)
         p.add_argument("app")
-    sub.add_parser("list")
-    # System-level, no app argument: run once at helper install (design.md §3.7).
+    # System-level, no app argument: run once at helper install (docs/adr/0004).
     sub.add_parser("provision-mqtt")
-    # wb-diag-collect integration (design.md §3.5.1, #5): register/deregister the
-    # collector command in the diag tool's main config at helper install/remove.
-    sub.add_parser("register-diag")
-    sub.add_parser("deregister-diag")
+    # No app argument: tolerant nginx reload, run from a service postrm after
+    # the static drop-in has been deleted by dpkg (docs/adr/0003).
+    sub.add_parser("reload-proxy")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     helper = Helper(SubprocessRunner(), Paths())
-    if args.command == "list":
-        for app in helper.list_apps():
-            print(app)
-    elif args.command == "provision-mqtt":
+    if args.command == "provision-mqtt":
         helper.provision_mqtt()
-    elif args.command == "register-diag":
-        helper.register_diag()
-    elif args.command == "deregister-diag":
-        helper.deregister_diag()
+    elif args.command == "reload-proxy":
+        helper.reload_proxy()
     else:
         getattr(helper, args.command)(args.app)
     return 0

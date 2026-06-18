@@ -1,11 +1,11 @@
-"""Subprocess seam shared by the thin wrappers (modules F–I).
+"""Subprocess seam shared by the thin wrappers.
 
-The pure cores (A–E) never touch the system. The wrappers do — they shell out
-to ``docker``, ``docker compose``, ``systemctl``, ``nginx``, ``mosquitto``. To
-keep the orchestration unit-testable without those binaries (real invocation is
-HITL on a controller), every wrapper takes a :class:`Runner` and is asserted on
-the commands it issues. ``SubprocessRunner`` is the production implementation;
-tests inject a fake.
+The pure renderers never touch the system. The wrappers do — they shell out to
+``docker``, ``systemctl``, ``nginx``, ``mosquitto`` (``docker compose`` itself
+runs from the systemd unit, not from Python). To keep the orchestration
+unit-testable without those binaries (real invocation is HITL on a controller),
+every wrapper takes a :class:`Runner` and is asserted on the commands it issues.
+``SubprocessRunner`` is the production implementation; tests inject a fake.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
-"""Systemd instance manager (module G).
+"""Systemd instance manager.
 
-Drives the ONE templated unit ``wb-docker-app@.service`` (design.md §3.5.1).
+Drives the ONE templated unit ``wb-docker-app@.service``.
 Each app is a distinct instance ``wb-docker-app@<app>.service`` where ``%i``
 resolves to the compose path. This wrapper turns the manager's verbs into the
 matching ``systemctl`` invocations against that instance; it takes a
