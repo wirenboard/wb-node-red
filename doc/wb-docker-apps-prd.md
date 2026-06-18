@@ -5,6 +5,12 @@
 > (15 решений), фундамент — [doc/wb-docker-repack.md](wb-docker-repack.md).
 > При публикации в GitHub Issues (`wirenboard/wb-docker`) применить лейбл
 > `ready-for-agent` (его нужно завести — сейчас в репо его нет).
+>
+> **Обновление 2026-06:** проект переведён на *minimal-first* (тонкий helper +
+> статические сервисы) — см. `docs/adr/0003` и `docs/adr/0004`. Разделы про
+> динамический helper (модули A/B/C — descriptor/nginx-генерация/аллокация
+> портов), wb-diag-collect и полный набор CLI-verbs **устарели**; источник
+> истины — ADR.
 
 ## Problem Statement
 

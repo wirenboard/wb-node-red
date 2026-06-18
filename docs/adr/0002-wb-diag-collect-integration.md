@@ -1,6 +1,9 @@
 # 0002 — wb-diag-collect integration via in-place config splice
 
-**Status:** Proposed (contentious — see consequences)
+**Status:** Superseded by ADR 0003 — the diag-collect integration was cut in the
+minimal-first refactor (the in-place foreign-config splice owned most open
+findings). Forward path if revived: upstream `conf.d` support in
+`wb-diag-collect`, not in-place splicing.
 
 ## Context
 
