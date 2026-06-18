@@ -1,0 +1,3 @@
+# The vendored palette tree is produced at .deb build time (npm ci) and shipped
+# in the binary package — it is NEVER committed to the repo (docs/adr/0006).
+node_modules/

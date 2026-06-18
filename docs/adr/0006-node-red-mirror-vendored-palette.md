@@ -35,10 +35,22 @@ a derived image, so the image-pipeline is dropped entirely.
 - Maintenance: a Node-RED bump = re-mirror (≈0); a palette bump = re-vendor the
   `.deb` (cheap npm step, no Docker build), and the two are decoupled. Removes the
   §8 "derived image" recurring cost.
-- **Open sub-decision (delivery of the vendored palette):** (a) a package-owned
-  read-only dir + Node-RED `nodesDir` (keeps `/data/node_modules` free for
-  user-installed palettes, clean package updates, needs a minimal `settings.js`),
-  or (b) seed into `/data/node_modules` and overwrite our palette subtree on
-  upgrade. To be fixed (and PoC'd) before shipping.
+- **Delivery (resolved → variant b):** the palette is `npm ci`-ed into the
+  `.deb` at build time under `/usr/lib/wb-docker-app/node-red/palette/node_modules/`
+  and REFRESHED (overwritten) into the user's `/data/node_modules` on every
+  install/upgrade by the helper (`seeding.refresh_tree`). The refresh touches
+  only the paths the package ships, so a user-installed palette in the same
+  `node_modules` survives. Chosen over variant (a) (`nodesDir` + a shipped
+  `settings.js`) because it matches the PoC exactly and keeps `settings.js`
+  unshipped (Node-RED's default, editor open behind the nginx gate). *Caveat:* if
+  a future palette version drops a transitive dep, the stale file lingers in
+  `/data/node_modules` (harmless orphan) — acceptable for now.
+- **Mirror tag is pending infra:** the WB-registry mirror of
+  `nodered/node-red:4.0.2` must be populated (pull→tag→push) — parked in
+  doc/issues/06. Until then the compose pins the intended mirror ref and a PoC
+  retags docker.io's vanilla image to it by hand.
+- Build-time vendoring reproduced locally: `npm ci` of the pinned manifest yields
+  93 pure-JS packages (0 `*.node`/`binding.gyp`, 0 compile hooks); the
+  `package-lock.json` is committed, the installed tree is not.
 - Notes (track, not blockers): the palette is community-maintained (`andreypopov`)
   and pulls the deprecated `request` (pure JS, works).

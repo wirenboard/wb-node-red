@@ -2,7 +2,9 @@ Source: wb-node-red
 Section: utils
 Priority: optional
 Maintainer: Wiren Board Team <info@wirenboard.com>
-Build-Depends: debhelper-compat (= 13)
+Build-Depends: debhelper-compat (= 13),
+ nodejs,
+ npm
 Standards-Version: 4.6.2
 Rules-Requires-Root: no
 

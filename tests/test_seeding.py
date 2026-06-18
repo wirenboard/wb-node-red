@@ -6,7 +6,7 @@ edits must survive byte-for-byte across re-runs. These tests exercise that on
 a real filesystem under ``tmp_path``.
 """
 
-from wb_docker_app.seeding import seed_app_dir, seed_tree
+from wb_docker_app.seeding import refresh_tree, seed_app_dir, seed_tree
 
 
 def test_seeds_files_and_dirs_when_absent_and_reports_them(tmp_path):
@@ -108,3 +108,59 @@ def test_seed_tree_is_idempotent_on_re_run(tmp_path):
 
     assert first == ["data/flows.json"]
     assert second == []
+
+
+# --- refresh_tree: a package's OWNED code (the vendored palette) -------------
+
+
+def test_refresh_tree_copies_a_nested_file_when_absent(tmp_path):
+    src = tmp_path / "palette"
+    (src / "node-red-contrib-wirenboard").mkdir(parents=True)
+    (src / "node-red-contrib-wirenboard" / "index.js").write_text("// v1\n")
+    dst = tmp_path / "node_modules"
+
+    written = refresh_tree(src, dst)
+
+    assert (dst / "node-red-contrib-wirenboard" / "index.js").read_text() == "// v1\n"
+    assert written == ["node-red-contrib-wirenboard/index.js"]
+
+
+def test_refresh_tree_overwrites_an_existing_destination(tmp_path):
+    # Unlike seed_tree, the palette is PACKAGE-OWNED code: a newer .deb must
+    # overwrite the previously delivered subtree (docs/adr/0006, delivery b).
+    src = tmp_path / "palette"
+    (src / "node-red-contrib-wirenboard").mkdir(parents=True)
+    (src / "node-red-contrib-wirenboard" / "index.js").write_text("// v2 NEW\n")
+    dst = tmp_path / "node_modules"
+    (dst / "node-red-contrib-wirenboard").mkdir(parents=True)
+    (dst / "node-red-contrib-wirenboard" / "index.js").write_text("// v1 OLD\n")
+
+    written = refresh_tree(src, dst)
+
+    assert (dst / "node-red-contrib-wirenboard" / "index.js").read_text() == "// v2 NEW\n"
+    assert written == ["node-red-contrib-wirenboard/index.js"]
+
+
+def test_refresh_tree_leaves_unrelated_files_untouched(tmp_path):
+    # A user-installed palette sharing /data/node_modules must survive: refresh
+    # only touches paths present in the package's vendored subtree.
+    src = tmp_path / "palette"
+    (src / "node-red-contrib-wirenboard").mkdir(parents=True)
+    (src / "node-red-contrib-wirenboard" / "index.js").write_text("// wb\n")
+    dst = tmp_path / "node_modules"
+    user_pkg = dst / "node-red-contrib-user-thing"
+    user_pkg.mkdir(parents=True)
+    (user_pkg / "index.js").write_text("// user installed\n")
+
+    refresh_tree(src, dst)
+
+    assert (user_pkg / "index.js").read_text() == "// user installed\n"
+
+
+def test_refresh_tree_returns_empty_when_src_dir_is_missing(tmp_path):
+    # A service that ships no palette (e.g. a future host-mode service) just
+    # delivers nothing.
+    src = tmp_path / "does-not-exist"
+    dst = tmp_path / "node_modules"
+
+    assert refresh_tree(src, dst) == []

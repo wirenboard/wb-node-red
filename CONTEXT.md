@@ -44,11 +44,21 @@ re-introduced then — not now.
   global `wb-homeui-back` upstream; gates its proxied location on a role
   (Node-RED → `admin`, RCE-capable); and on 401 redirects to the homeui login on
   a port-less `$host` (no same-port loop). Controller-driven correction — see
-  ADR 0005.
+  ADR 0005. The gate suits services with **no auth of their own** (Node-RED's
+  editor is open behind it); a service that ships its own auth (Home Assistant,
+  OpenHAB) makes the gate a redundant second login that also breaks app/API
+  tokens, so the gate is a per-service knob, off for them (known direction).
 - **`wb` network + gateway listener** — a dedicated docker network (fixed
   subnet/gateway, e.g. `172.29.0.0/24` / `172.29.0.1`); mosquitto gets an extra
   listener bound to the gateway (e.g. `11883`) so containers reach the broker
-  without exposing `1883` to the LAN. Provisioned **once**, at helper install.
+  without exposing `1883` to the LAN. Provisioned **lazily** and idempotently —
+  by the postinst of the first bridge-service that needs the broker, NOT at
+  helper install (the helper ships only the mechanism, and the network/listener
+  are a singleton so several bridge-services can each trigger it safely).
+  This is a **bridge-class** feature: a host-networking service (Home Assistant,
+  OpenHAB) reaches mosquitto directly on `localhost:1883` and bypasses the gateway
+  entirely — so the networking mode is a per-service knob (known direction;
+  revisit when the first host-mode service is packaged).
 - **ip_nonlocal_bind** — the boot-timing mechanism (ADR 0004): the helper sets
   `net.ipv4.ip_nonlocal_bind=1` so mosquitto can bind the gateway listener even
   before Docker has created the `wb` network, keeping mosquitto's normal early
@@ -58,7 +68,9 @@ re-introduced then — not now.
   needs building baked in. **Node-RED uses MIRROR, not derived** (ADR 0006): its
   palette `node-red-contrib-wirenboard` is pure JS (PoC-verified on armv7l), so
   the image is a byte-for-byte mirror of upstream and the palette is vendored as
-  plain files into the `.deb` (npm install at build time). The default
+  plain files into the `.deb` (`npm ci` at build time) and **refreshed
+  (overwritten) into the user's `/data/node_modules` on each install/upgrade** —
+  it is package-owned code, unlike the seed-if-absent `flows.json`. The default
   `flows.json` (broker node → `172.29.0.1:11883` + a `/devices/#` example) is
   also shipped by the `.deb` and **seeded into `/mnt/data/.../<app>/data/`
   only-if-absent** (it lives in the bind-mounted `/data`, so baking it into an

@@ -3,8 +3,22 @@ wb-node-red (0.2.0) stable; urgency=medium
   * Static service (docs/adr/0003): the base docker-compose.yml now hardcodes
     the loopback port (127.0.0.1:21880 -> 1880) instead of relying on runtime
     port allocation.
-  * Ships its own static nginx proxy drop-in at
-    /etc/nginx/includes/default.wb.d/node-red.conf instead of generating it.
+  * Image is now a byte-for-byte MIRROR of vanilla nodered/node-red:4.0.2 (no
+    derived -wb1 build, no Dockerfile). The WB palette node-red-contrib-wirenboard
+    (pure JS) is npm-vendored into the .deb at build time and refreshed into
+    /data/node_modules at install, so the editor has the WB nodes out of the box
+    with no runtime npm (docs/adr/0006). Build now needs nodejs + npm.
+  * Ships its own standalone nginx server block at
+    /etc/nginx/sites-available/node-red.conf (symlinked into sites-enabled/),
+    reusing the homeui login via auth_request, instead of generating it
+    (docs/adr/0005).
+  * postinst provisions the broker bridge it needs (wb-docker-app
+    provision-mqtt) before installing — the helper no longer does this at its
+    own install (docs/adr/0004).
+  * postinst passes --data-uid 1000 (Node-RED's container user) so the helper
+    chowns the seeded /data; the nginx site is now enabled by the helper with an
+    absolute-target symlink. Dropped the relative dh_link .links file, which
+    broke on WB's bind-mounted sites-enabled. Both controller-validated.
   * New postrm reloads nginx via wb-docker-app reload-proxy after dpkg removes
     the static drop-in, so removal does not leave a stale server-block proxying
     to a dead upstream.

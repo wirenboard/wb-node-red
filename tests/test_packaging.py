@@ -32,6 +32,7 @@ HELPER = PKG / "wb-docker-app"
 SERVICE = PKG / "wb-node-red"
 
 BASE_COMPOSE = SERVICE / "compose" / "node-red" / "docker-compose.yml"
+PALETTE = SERVICE / "palette"
 
 MAINTAINER_SCRIPTS = [
     HELPER / "debian" / "postinst",
@@ -195,8 +196,9 @@ def test_node_red_deb_carries_base_compose_and_static_nginx_dropin(tmp_path):
     contents = _deb_contents(deb)
     # base compose is package-owned under /usr/lib (design.md §3.6).
     assert "usr/lib/wb-docker-app/node-red/docker-compose.yml" in contents
-    # the standalone reverse-proxy server block lands in sites-available; dh_link
-    # symlinks it into sites-enabled (the WB pattern, cf. wb-mqtt-alice-proxy).
+    # the standalone reverse-proxy server block lands in sites-available; the
+    # helper symlinks it into sites-enabled with an ABSOLUTE target at install
+    # (a relative dh_link target breaks on WB's bind-mounted sites-enabled).
     assert "etc/nginx/sites-available/node-red.conf" in contents
     # the default flows.json ships in the package's seed/ tree, mirroring the
     # user layout; the helper seeds it into /mnt/data only-if-absent at install,
@@ -293,3 +295,50 @@ def test_base_compose_config_parses_wb_labels_and_static_port(tmp_path):
     assert port["host_ip"] == "127.0.0.1"
     assert str(port["published"]) == "21880"
     assert int(port["target"]) == 1880
+
+
+def test_base_compose_pins_a_vanilla_mirror_image_not_derived():
+    """Node-RED ships as a byte-for-byte MIRROR of upstream, not a derived image.
+
+    ADR 0006: the image is a plain retag of vanilla ``nodered/node-red`` into the
+    WB registry (pull->tag->push, no Dockerfile, no build), so the compose must
+    pin the upstream tag (``4.0.2``) and must NOT carry a derived ``-wbN`` suffix
+    (which would denote a built image). The WB palette is vendored into the .deb
+    instead of being baked into the image.
+    """
+    compose = BASE_COMPOSE.read_text()
+    assert "registry.wirenboard.com/wb/node-red:4.0.2" in compose
+    assert ":4.0.2-wb1" not in compose  # no derived tag
+
+
+# --- vendored palette (ADR 0006: mirror image + palette in the .deb) ---------
+
+
+def test_palette_manifest_pins_the_wb_palette_for_reproducible_vendoring():
+    """The palette is npm-installed at build time from a pinned manifest.
+
+    ADR 0006: node-red-contrib-wirenboard is pure JS, so it is vendored into the
+    .deb instead of baked into the image. The manifest pins an EXACT version
+    (the PoC-validated 3.11.0) and a package-lock.json is committed so the build
+    is reproducible via ``npm ci``. The installed tree is NEVER committed.
+    """
+    manifest = json.loads((PALETTE / "package.json").read_text())
+    pin = manifest["dependencies"]["node-red-contrib-wirenboard"]
+    assert pin == "3.11.0"  # exact pin, no ^/~/range
+    assert (PALETTE / "package-lock.json").exists()  # reproducible npm ci
+    assert "node_modules/" in (PALETTE / ".gitignore").read_text()
+
+
+def test_node_red_rules_vendors_the_palette_at_build_time():
+    """debian/rules npm-installs the palette and ships it under the palette dir.
+
+    The image build is gone (ADR 0006); the only built artifact is the palette
+    tree, installed to /usr/lib/wb-docker-app/node-red/palette/ from where the
+    helper refreshes it into /data/node_modules at install.
+    """
+    rules = (SERVICE / "debian" / "rules").read_text()
+    assert "npm ci" in rules
+    assert "usr/lib/wb-docker-app/node-red/palette" in rules
+    # the build host needs npm to vendor the (pure-JS) palette
+    control = (SERVICE / "debian" / "control").read_text()
+    assert "npm" in control

@@ -2,10 +2,11 @@
 # postrm for wb-node-red (docs/adr/0003).
 #
 # Thin glue: source the shared library and delegate the proxy reload to the
-# helper. Runs AFTER dpkg has deleted the static nginx drop-in
-# (/etc/nginx/includes/default.wb.d/node-red.conf), so the reload here drops the
+# helper. The sites-enabled symlink was already removed by prerm (helper remove),
+# and dpkg has now deleted the static server block
+# (/etc/nginx/sites-available/node-red.conf), so the reload here drops the
 # now-stale server-block instead of leaving nginx proxying to a dead upstream.
-# Not reloaded on upgrade: the new install reloads its own fresh drop-in.
+# Not reloaded on upgrade: the new install reloads its own fresh block.
 set -e
 
 LIB=/usr/lib/wb-docker-app/lib/wb-docker-app.sh

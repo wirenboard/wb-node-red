@@ -9,6 +9,8 @@ returning canned results) and a ``Paths`` rooted at ``tmp_path`` — no
 docker/systemd/nginx is touched.
 """
 
+import os
+
 import pytest
 
 from wb_docker_app.cli import Helper, Paths, build_parser
@@ -46,6 +48,8 @@ def paths(tmp_path):
         mosquitto_conf_dir=tmp_path / "etc/mosquitto/conf.d",
         sysctl_file=tmp_path / "etc/sysctl.d/60-wb-docker-app.conf",
         mqtt_marker_file=tmp_path / "var/lib/wb-docker-app/mqtt-provisioned",
+        nginx_sites_available=tmp_path / "etc/nginx/sites-available",
+        nginx_sites_enabled=tmp_path / "etc/nginx/sites-enabled",
     )
 
 
@@ -148,6 +152,100 @@ def test_install_does_not_reseed_user_overrides_on_reinstall(paths):
     assert "mem_limit: 256m" in override.read_text()  # user edit survives
 
 
+def test_install_delivers_the_vendored_palette_into_data_node_modules(paths):
+    # The WB palette is package-OWNED code vendored under <app>/palette/; install
+    # refreshes it into the user's /data/node_modules so Node-RED loads it with
+    # no npm at runtime (docs/adr/0006, delivery b).
+    palette_node = (paths.pkg_dir / "node-red" / "palette" / "node_modules"
+                    / "node-red-contrib-wirenboard")
+    palette_node.mkdir(parents=True)
+    (palette_node / "package.json").write_text('{"version": "3.11.0"}\n')
+
+    Helper(FakeRunner(), paths).install("node-red")
+
+    landed = (paths.data_dir / "node-red" / "data" / "node_modules"
+              / "node-red-contrib-wirenboard" / "package.json")
+    assert landed.read_text() == '{"version": "3.11.0"}\n'
+
+
+def test_install_overwrites_the_palette_on_upgrade_but_not_user_palettes(paths):
+    # Unlike flows.json (user data, seed-if-absent), the palette is package code:
+    # a newer .deb overwrites our delivered subtree, while a user-installed
+    # palette in the same node_modules survives (docs/adr/0006).
+    palette_node = (paths.pkg_dir / "node-red" / "palette" / "node_modules"
+                    / "node-red-contrib-wirenboard")
+    palette_node.mkdir(parents=True)
+    (palette_node / "package.json").write_text('{"version": "3.12.0"}\n')  # new
+
+    nm = paths.data_dir / "node-red" / "data" / "node_modules"
+    old = nm / "node-red-contrib-wirenboard"
+    old.mkdir(parents=True)
+    (old / "package.json").write_text('{"version": "3.11.0"}\n')  # old delivery
+    user = nm / "node-red-contrib-user-thing"
+    user.mkdir(parents=True)
+    (user / "package.json").write_text('{"name": "user"}\n')
+
+    Helper(FakeRunner(), paths).install("node-red")
+
+    assert (old / "package.json").read_text() == '{"version": "3.12.0"}\n'  # refreshed
+    assert (user / "package.json").read_text() == '{"name": "user"}\n'  # survives
+
+
+def test_install_symlinks_the_nginx_site_with_an_absolute_target(paths):
+    # The service ships its server block in sites-available; install enables it
+    # by symlinking into sites-enabled with an ABSOLUTE target. A relative target
+    # ("../sites-available/...") breaks on WB, where sites-enabled is bind-mounted
+    # from /mnt/data and the relative path resolves outside /etc (controller bug).
+    conf = paths.nginx_sites_available / "node-red.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text("server {}\n")
+
+    Helper(FakeRunner(), paths).install("node-red")
+
+    link = paths.nginx_sites_enabled / "node-red.conf"
+    assert link.is_symlink()
+    target = os.readlink(link)
+    assert os.path.isabs(target), f"symlink target must be absolute, got {target!r}"
+    assert target == str(conf)
+
+
+def test_install_without_a_shipped_nginx_conf_makes_no_symlink(paths):
+    # A service that ships no proxy (e.g. a future host-mode service) -> no link.
+    Helper(FakeRunner(), paths).install("node-red")
+    assert not (paths.nginx_sites_enabled / "node-red.conf").is_symlink()
+
+
+def test_install_chowns_the_data_dir_to_the_service_uid(paths):
+    # The container runs as a non-root uid (Node-RED -> 1000); the seeded data
+    # dir is created root:root, so install must chown it or the container can't
+    # write (controller bug: EACCES restart loop).
+    runner = FakeRunner()
+    Helper(runner, paths).install("node-red", data_uid=1000)
+
+    data = paths.data_dir / "node-red" / "data"
+    assert runner.issued("chown", "-R", "1000:1000", str(data))
+
+
+def test_install_without_data_uid_does_not_chown(paths):
+    runner = FakeRunner()
+    Helper(runner, paths).install("node-red")
+    assert not runner.issued("chown")
+
+
+def test_remove_unlinks_the_nginx_site(paths):
+    conf = paths.nginx_sites_available / "node-red.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text("server {}\n")
+    helper = Helper(FakeRunner(), paths)
+    helper.install("node-red")
+    link = paths.nginx_sites_enabled / "node-red.conf"
+    assert link.is_symlink()
+
+    helper.remove("node-red")
+
+    assert not link.is_symlink() and not link.exists()
+
+
 def test_remove_disables_the_unit_without_reloading_nginx_leaving_data_intact(paths):
     runner = FakeRunner()
     helper = Helper(runner, paths)
@@ -230,9 +328,9 @@ def test_parser_rejects_the_dropped_day2_verbs():
 
 
 def test_provision_mqtt_creates_the_network_and_restarts_mosquitto_once(paths):
-    # MQTT connectivity is provisioned by the helper at install time: it creates
-    # the `wb` docker network, sets ip_nonlocal_bind and restarts mosquitto
-    # exactly once (design.md §3.7).
+    # MQTT connectivity is provisioned lazily by the first bridge-service's
+    # postinst (docs/adr/0004): it creates the `wb` docker network, sets
+    # ip_nonlocal_bind and restarts mosquitto exactly once.
     runner = FakeRunner()
     helper = Helper(runner, paths)
 
@@ -264,8 +362,9 @@ def test_provision_mqtt_writes_no_after_docker_dropin(paths):
 
 
 def test_a_service_install_never_touches_mosquitto(paths):
-    # Provisioning is the helper's job, run once at helper install — NOT per
-    # service. Installing a service must never restart mosquitto.
+    # Provisioning is a separate, explicit step (the service's postinst calls
+    # provision-mqtt before install). `install` itself must never restart
+    # mosquitto — it only seeds, enables the unit and reloads nginx.
     runner = FakeRunner()
     helper = Helper(runner, paths)
 

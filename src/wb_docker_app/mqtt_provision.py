@@ -1,6 +1,7 @@
 """One-time MQTT provisioner.
 
-Run ONCE per system at helper install (docs/adr/0004), composing the pure
+Run ONCE per system, lazily — by the postinst of the first bridge-service that
+needs the broker, NOT at helper install (docs/adr/0004) — composing the pure
 renderers (:mod:`wb_docker_app.mqtt`) with a :class:`Runner`: it creates the
 dedicated docker network ``wb`` only if absent, writes the mosquitto gateway
 listener drop-in, writes the ``ip_nonlocal_bind`` sysctl drop-in and applies

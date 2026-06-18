@@ -1,7 +1,8 @@
 """Behavior of the one-time MQTT provisioner (module H).
 
-Run ONCE per system at helper install, the provisioner (design.md §3.7):
-creates the docker network ``wb`` only if absent, writes the mosquitto gateway
+Run ONCE per system, lazily, by the first bridge-service that needs the broker
+(docs/adr/0004 — not at helper install), the provisioner: creates the docker
+network ``wb`` only if absent, writes the mosquitto gateway
 listener drop-in, writes & applies the ``ip_nonlocal_bind`` sysctl drop-in, and
 does a single ``restart mosquitto``. It deliberately writes NO
 ``After=docker.service`` systemd drop-in: mosquitto keeps its early boot and

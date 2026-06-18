@@ -3,6 +3,18 @@
 Labels: `ready-for-agent`
 Type: HITL
 
+> **Superseded by [ADR 0006](../../docs/adr/0006-node-red-mirror-vendored-palette.md).**
+> The DERIVED-image approach below is dropped: the WB palette
+> `node-red-contrib-wirenboard` is pure JS, so Node-RED now ships as a
+> **byte-for-byte MIRROR** of vanilla upstream + the palette **vendored into the
+> `.deb`** (npm at build time, refreshed into `/data/node_modules` at install) +
+> a seeded default `flows.json`. No Dockerfile, no derived `-wbN` tag, no runtime
+> npm. The `.deb` side is implemented and unit-tested. **Only the infra item
+> remains:** populate the WB-registry **mirror** of `nodered/node-red:4.0.2`
+> (pull→tag→push) and run the final on-controller PoC. The acceptance criteria
+> below are reframed accordingly (the "derived build" / `-wbN` ones no longer
+> apply).
+
 ## Parent
 
 [doc/wb-docker-apps-prd.md](../wb-docker-apps-prd.md) — PRD: wb-docker-apps.

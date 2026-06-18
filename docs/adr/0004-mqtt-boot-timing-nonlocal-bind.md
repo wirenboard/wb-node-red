@@ -1,6 +1,6 @@
 # 0004 — MQTT boot-timing via ip_nonlocal_bind, not After=docker.service
 
-**Status:** Proposed (pending controller validation, HITL)
+**Status:** Accepted (cold-boot validated on aat3d5fw)
 
 ## Context
 
@@ -17,6 +17,18 @@ IP at its normal early start (the same trick keepalived/HAProxy use for VIPs); t
 listener goes live the moment Docker brings up the `wb` network. mosquitto keeps
 its normal early boot.
 
+**Provisioning is lazy, not at helper install.** The helper ships only the
+mechanism (the `provision-mqtt` verb + the idempotent provisioner); it does NOT
+touch mosquitto or the sysctl when the helper package itself is installed.
+Instead, the postinst of the first *bridge* service that needs the broker (e.g.
+wb-node-red) calls `provision-mqtt`. The provisioner is an idempotent singleton —
+it creates the `wb` network only when absent and restarts mosquitto only when its
+config drifts — so several bridge services can each call it without re-restarting
+the broker. A controller running only host-networking services (which reach
+mosquitto on localhost directly) never grows a gateway listener it does not use,
+and there is nothing to "turn off". This is the opt-in/lazy default: the feature
+isn't present until a service that needs it asks.
+
 ## Considered and rejected
 
 - **`After=docker.service` on mosquitto** — orders the whole broker behind Docker
@@ -29,9 +41,9 @@ its normal early boot.
 
 ## Consequences
 
-- Must be validated on a real controller (`aat3d5fw`): that mosquitto under
-  nonlocal_bind actually serves the gateway after the network appears, on a cold
-  boot.
+- **Validated on `aat3d5fw` (cold boot):** mosquitto under nonlocal_bind binds
+  the gateway listener at early boot and serves it once Docker brings up the
+  `wb` network. PASS.
 - Needs team sign-off that the helper may set this sysctl and edit mosquitto
   config — or, cleaner long-term, ship both in the base WB mosquitto config so the
   helper never touches the broker at install (open team decision).
