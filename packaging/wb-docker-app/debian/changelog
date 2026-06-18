@@ -20,6 +20,10 @@ wb-docker-app (0.3.0) stable; urgency=medium
     dh_link symlink breaks on WB's bind-mounted sites-enabled, and a root-owned
     /data blocks a uid-1000 container. Build-Depends now needs
     pybuild-plugin-pyproject.
+  * `install` now restarts the systemd instance (enable + restart, not
+    enable --now) so an upgraded image tag is actually applied — the running
+    container is recreated on the current compose instead of staying on the old
+    image until a reboot.
   * MQTT boot-timing (docs/adr/0004): mosquitto keeps its early boot via the
     net.ipv4.ip_nonlocal_bind sysctl instead of an After=docker.service
     ordering; the provision writes a marker only after a successful restart so a

@@ -24,10 +24,8 @@ class SystemdInstanceManager:
     def __init__(self, runner: Runner):
         self._runner = runner
 
-    def enable_now(self, app: str):
-        return self._runner.run(
-            ["systemctl", "enable", "--now", _unit(app)]
-        )
+    def enable(self, app: str):
+        return self._runner.run(["systemctl", "enable", _unit(app)])
 
     def disable(self, app: str):
         return self._runner.run(

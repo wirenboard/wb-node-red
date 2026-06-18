@@ -30,18 +30,15 @@ class FakeRunner:
         )
 
 
-def test_enable_now_enables_the_instance_with_now_on_the_right_unit():
+def test_enable_enables_the_instance_on_the_right_unit():
+    # Enable for boot only (no --now): install pairs this with an explicit
+    # restart, so a new image tag is applied on upgrade (not just on first start).
     fake = FakeRunner()
 
-    SystemdInstanceManager(fake).enable_now("node-red")
+    SystemdInstanceManager(fake).enable("node-red")
 
     assert fake.calls == [
-        (
-            "systemctl",
-            "enable",
-            "--now",
-            "wb-docker-app@node-red.service",
-        )
+        ("systemctl", "enable", "wb-docker-app@node-red.service")
     ]
 
 

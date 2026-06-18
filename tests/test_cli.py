@@ -64,8 +64,23 @@ def test_install_seeds_the_user_layer_and_enables_the_systemd_instance(paths):
     assert override.exists()
     assert (paths.data_dir / "node-red" / "data").is_dir()
 
-    # service enabled+started under the templated systemd unit
-    assert runner.issued("systemctl", "enable", "--now",
+    # enabled for boot, and restarted so the unit re-runs `docker compose up -d`
+    # against the current compose (on upgrade this recreates the container on a
+    # new image tag; `enable --now` alone would not).
+    assert runner.issued("systemctl", "enable",
+                         "wb-docker-app@node-red.service")
+    assert runner.issued("systemctl", "restart",
+                         "wb-docker-app@node-red.service")
+
+
+def test_install_restarts_the_unit_so_an_upgraded_image_is_applied(paths):
+    # The release-flow gap: on upgrade the unit is already running on the OLD
+    # image; `enable --now` would NOT recreate it, so a new image tag in the
+    # compose would never take effect. install issues `systemctl restart` so the
+    # unit re-runs `docker compose up -d` and recreates on the current image.
+    runner = FakeRunner()
+    Helper(runner, paths).install("node-red")
+    assert runner.issued("systemctl", "restart",
                          "wb-docker-app@node-red.service")
 
 

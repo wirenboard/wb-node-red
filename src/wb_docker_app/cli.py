@@ -148,7 +148,13 @@ class Helper:
             self.runner.run(
                 ["chown", "-R", f"{data_uid}:{data_uid}", str(data)]
             )
-        self.systemd.enable_now(app)
+        # Enable for boot, then RESTART so the unit re-runs `docker compose up
+        # -d` against the current base compose. On a first install this just
+        # starts the container; on an UPGRADE it recreates it so a new image tag
+        # actually takes effect. `enable --now` alone would leave the already-
+        # running container on the OLD image until a reboot (release-flow gap).
+        self.systemd.enable(app)
+        self.systemd.restart(app)
         self._enable_nginx_site(app)
         self._reload_nginx()
 
