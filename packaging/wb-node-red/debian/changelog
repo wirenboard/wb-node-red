@@ -1,0 +1,16 @@
+wb-node-red (1.0.0) stable; urgency=medium
+
+  * Initial release. One-command `apt install wb-node-red` for Node-RED on
+    Wiren Board controllers:
+    - runs a byte-for-byte mirror of vanilla nodered/node-red (no derived
+      build); the pure-JS WB palette node-red-contrib-wirenboard is npm-vendored
+      into the package at build time and refreshed into /data/node_modules at
+      install, so the editor has the WB nodes out of the box with no runtime npm;
+    - default flow pre-wired to the local MQTT broker (172.29.0.1:11883) and the
+      device tree (/devices/#);
+    - reverse-proxied on its own port behind the homeui login (auth_request,
+      admin role) via a standalone nginx server block;
+    - user data persists under /mnt/data across upgrades; updates are explicit
+      (apt upgrade).
+
+ -- Wiren Board Team <info@wirenboard.com>  Fri, 19 Jun 2026 12:00:00 +0300

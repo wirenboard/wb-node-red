@@ -1,0 +1,18 @@
+wb-docker-app (1.0.0) stable; urgency=medium
+
+  * Initial release. Shared lifecycle helper for containerized services on
+    Wiren Board controllers, installed once as a dependency by each service:
+    - the dedicated `wb` docker network + mosquitto gateway listener +
+      net.ipv4.ip_nonlocal_bind, provisioned lazily (opt-in) by the first
+      bridge service that needs the broker;
+    - the templated systemd unit wb-docker-app@<app>.service (docker compose
+      up/down per instance);
+    - seed-if-absent of the user layer under /mnt/data and refresh of
+      package-owned code (e.g. a service's vendored palette);
+    - enabling a service's nginx site (absolute-target symlink) and a tolerant
+      proxy reload;
+    - excluding the managed packages from unattended-upgrades (updates stay
+      explicit);
+    - CLI verbs: provision-mqtt, install <app> [--data-uid], remove, reload-proxy.
+
+ -- Wiren Board Team <info@wirenboard.com>  Fri, 19 Jun 2026 12:00:00 +0300

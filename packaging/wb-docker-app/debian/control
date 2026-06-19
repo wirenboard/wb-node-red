@@ -1,0 +1,19 @@
+Source: wb-docker-app
+Section: utils
+Priority: optional
+Maintainer: Wiren Board Team <info@wirenboard.com>
+Build-Depends: debhelper-compat (= 13), dh-python, python3-all, python3-setuptools, pybuild-plugin-pyproject
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: wb-docker-app
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3, docker-compose-plugin
+Description: Shared helper for containerized services on Wiren Board controllers
+ wb-docker-app is the shared lifecycle helper for Wiren Board docker-based
+ service packages. It ships the single templated systemd unit
+ wb-docker-app@.service, the wb-docker-app CLI (provision-mqtt/install/remove/
+ reload-proxy) and the shell library that service maintainer scripts source.
+ The dangerous host integration (seeding /mnt/data, the dedicated MQTT network
+ + mosquitto gateway listener, systemd wiring, tolerant nginx reload) lives here
+ once and is reused by every service package via Depends, refcounted by apt.

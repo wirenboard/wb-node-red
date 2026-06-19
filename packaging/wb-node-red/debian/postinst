@@ -1,0 +1,32 @@
+#!/bin/sh
+# postinst for wb-node-red (design.md §4).
+#
+# Thin glue: source the shared library, provision the broker bridge this service
+# needs, then delegate the install flow to the helper. Both calls are idempotent
+# — safe to re-run on upgrade.
+set -e
+
+LIB=/usr/lib/wb-docker-app/lib/wb-docker-app.sh
+
+case "$1" in
+	configure)
+		# shellcheck source=/dev/null
+		. "$LIB"
+		# Node-RED runs on the `wb` bridge network and reaches the broker through
+		# the mosquitto gateway listener, so it provisions that connectivity here
+		# (idempotent singleton; the helper no longer does it at its own install).
+		wb_docker_app_provision_mqtt
+		# Node-RED's container runs as uid 1000; pass it so the helper chowns the
+		# seeded /data, otherwise the container can't write it (EACCES loop).
+		wb_docker_app_install node-red 1000
+		;;
+	abort-upgrade | abort-remove | abort-deconfigure) ;;
+	*)
+		echo "postinst called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

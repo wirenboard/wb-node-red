@@ -1,0 +1,20 @@
+[project]
+name = "wb-docker-app"
+version = "1.0.0"
+description = "Shared helper for installing containerized services on Wiren Board controllers"
+requires-python = ">=3.11"
+
+[project.scripts]
+wb-docker-app = "wb_docker_app.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+# Build rules for wb-docker-app (helper).
+#
+# Python helper built with pybuild/setuptools (entry point declared in
+# pyproject), plus the templated systemd unit and the shell library installed
+# verbatim via dh_install. The CLI entry point lands in /usr/bin/wb-docker-app.
+#
+# The Python sources (pyproject.toml + src/) live at the REPO ROOT — two levels
+# up from this debian/, because the monorepo keeps packaging under
+# packaging/<pkg>/. pybuild defaults to the package dir, so every build step is
+# pointed at the repo root with --dir (controller-validated; a plain
+# dpkg-buildpackage from this dir otherwise can't find the sources).
+export PYBUILD_NAME=wb-docker-app
+PYBUILD_ROOT := $(CURDIR)/../..
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_clean:
+	dh_auto_clean --buildsystem=pybuild -- --dir $(PYBUILD_ROOT)
+
+override_dh_auto_configure:
+	dh_auto_configure --buildsystem=pybuild -- --dir $(PYBUILD_ROOT)
+
+override_dh_auto_build:
+	dh_auto_build --buildsystem=pybuild -- --dir $(PYBUILD_ROOT)
+
+# Tests run in CI (pytest at the repo root), not at package-build time.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	dh_auto_install --buildsystem=pybuild -- --dir $(PYBUILD_ROOT)

@@ -1,0 +1,3 @@
+compose/node-red/docker-compose.yml usr/lib/wb-docker-app/node-red/
+nginx/node-red.conf etc/nginx/sites-available/
+config/flows.json usr/lib/wb-docker-app/node-red/seed/data/

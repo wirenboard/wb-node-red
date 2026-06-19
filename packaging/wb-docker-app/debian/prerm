@@ -1,0 +1,21 @@
+#!/bin/sh
+# prerm for wb-docker-app (helper).
+#
+# The helper owns no per-system state to tear down on removal: the dedicated
+# `wb` docker network and the mosquitto gateway listener are intentionally left
+# in place (services may still be attached), and the sysctl drop-in is harmless.
+# This script exists only to carry the debhelper-generated systemd snippets for
+# the templated unit.
+set -e
+
+case "$1" in
+	remove | deconfigure | upgrade | failed-upgrade) ;;
+	*)
+		echo "prerm called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

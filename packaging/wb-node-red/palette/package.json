@@ -1,0 +1,9 @@
+{
+  "name": "wb-node-red-palette",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vendored Wiren Board Node-RED palette. npm-installed at .deb build time and delivered to /data/node_modules (docs/adr/0006); the image stays a vanilla mirror. Pinned to the PoC-validated version. Not for publication.",
+  "dependencies": {
+    "node-red-contrib-wirenboard": "3.11.0"
+  }
+}

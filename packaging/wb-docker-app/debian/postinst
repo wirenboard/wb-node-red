@@ -1,0 +1,28 @@
+#!/bin/sh
+# postinst for wb-docker-app (helper).
+#
+# The helper itself starts no service and touches no system state at install: it
+# only ships the templated unit, the CLI and the shell library. It does NOT
+# provision MQTT connectivity here — that is done lazily, by the postinst of the
+# first service that actually needs the broker bridge (e.g. wb-node-red), so a
+# controller that only runs host-networking services never grows a mosquitto
+# listener it does not use (docs/adr/0004). Here we just make systemd aware of
+# the freshly installed template unit so service packages can enable instances.
+set -e
+
+case "$1" in
+	configure)
+		if [ -d /run/systemd/system ]; then
+			systemctl daemon-reload || true
+		fi
+		;;
+	abort-upgrade | abort-remove | abort-deconfigure) ;;
+	*)
+		echo "postinst called with unknown argument \`$1'" >&2
+		exit 1
+		;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,33 @@
+# Base compose for wb-node-red (design.md §3.10).
+#
+# Package-owned base layer, installed to /usr/lib/wb-docker-app/node-red/ and
+# freely overwritten on upgrade. The user layer (docker-compose.override.yml,
+# data/) is seeded only-if-absent to /mnt/data/wb-docker-apps/node-red/ by the
+# helper and merged on top at runtime (`-f base -f override`).
+#
+# node-red is a STATIC, curated service: its internal loopback port is hardcoded
+# (no dynamic allocation), and the matching nginx proxy is shipped as a static
+# drop-in by this package. The wb.* labels are kept as plain metadata and are no
+# longer read by the helper.
+services:
+  node-red:
+    # Byte-for-byte MIRROR of vanilla upstream `nodered/node-red:4.0.2`, retagged
+    # into the WB registry (pull->tag->push; no Dockerfile, no derived `-wbN`
+    # tag) — docs/adr/0006. The WB palette is vendored into the .deb and seeded
+    # into /data/node_modules, NOT baked into this image. NOTE: the WB-registry
+    # mirror tag must be populated (parked infra, doc/issues/06); until then a
+    # PoC retags docker.io's vanilla image to this ref by hand.
+    image: registry.wirenboard.com/wb/node-red:4.0.2
+    restart: unless-stopped
+    networks: [wb]
+    ports:
+      - "127.0.0.1:21880:1880"
+    volumes:
+      - /mnt/data/wb-docker-apps/node-red/data:/data
+    labels:
+      wb.app: node-red
+      wb.title: "Node-RED"
+
+networks:
+  wb:
+    external: true

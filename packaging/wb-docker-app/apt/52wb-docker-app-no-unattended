@@ -1,0 +1,26 @@
+// wb-docker-app: keep containerized services off unattended-upgrades
+// (design.md §3.11, issue #5).
+//
+// Container apps are riskier to auto-upgrade than system packages: a major
+// Node-RED / Home Assistant bump can break user flows/configs or migrate data
+// forward-incompatibly, and an unexpected restart mid-automation is worse than
+// a deferred upgrade. So upgrades happen only on purpose, via an explicit
+// `apt upgrade wb-<service>` (whose postinst runs `compose pull` + `up -d`).
+//
+// We blacklist the shared helper and every service package by the `wb-`
+// docker-app naming convention. Patterns are Python regexes anchored at the
+// start; we anchor the end with `$` so `wb-docker-app` matches only itself and
+// not some unrelated `wb-docker-app-foo`. Service packages are matched by the
+// `wb-` prefix shared with the rest of the WB platform, so we intentionally
+// scope to the ones that ship a base compose under this helper rather than
+// blacklisting all of `wb-*` (which would freeze unrelated WB system packages).
+//
+// Shipped by the wb-docker-app helper package (one per system): it blacklists
+// itself and the in-tree node-red service package. Because the entries are
+// end-anchored, a new curated service package whose slug does not already match
+// an entry below ships its own matching end-anchored drop-in under
+// etc/apt/apt.conf.d/.
+Unattended-Upgrade::Package-Blacklist {
+	"wb-docker-app$";
+	"wb-node-red$";
+};

@@ -1,0 +1,30 @@
+#!/usr/bin/make -f
+# Build rules for wb-node-red (service).
+#
+# Mostly a pure-text package: the base compose, the static nginx server block
+# and the default flows.json are installed verbatim via debian/wb-node-red.install.
+#
+# The ONE built artifact is the vendored Node-RED palette (docs/adr/0006). The
+# image itself stays a byte-for-byte vanilla MIRROR; the WB palette
+# (node-red-contrib-wirenboard) is pure JS, so we `npm ci` it at BUILD time and
+# ship the resulting node_modules tree under
+# /usr/lib/wb-docker-app/node-red/palette/. At install the helper refreshes that
+# tree into the user's /data/node_modules — no image build, no runtime npm,
+# offline-capable. Reproducible from the committed package-lock.json (needs npm
+# + registry access on the build host only).
+
+DESTDIR := debian/wb-node-red
+PALETTE_DEST := $(DESTDIR)/usr/lib/wb-docker-app/node-red/palette
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cd palette && npm ci --omit=dev --no-audit --no-fund
+
+override_dh_auto_install:
+	mkdir -p $(PALETTE_DEST)
+	cp -a palette/node_modules $(PALETTE_DEST)/
+
+override_dh_auto_clean:
+	rm -rf palette/node_modules

@@ -1,0 +1,29 @@
+# Templated systemd unit for wb-docker-app.
+#
+# ONE unit for the whole system: each app is an instance
+# `wb-docker-app@<app>.service` where `%i` resolves to the app slug. The unit
+# brings the app's compose project up on start and down on stop, over the same
+# base-then-override file pair and fixed project name the helper CLI uses.
+# Crash-survival and reboot-survival come from
+# `restart: unless-stopped` in the compose itself; this unit gives the WB-native
+# management/observability idiom (systemctl status/restart, deterministic boot
+# order) on top of it.
+#
+# Services are static: the loopback port is hardcoded in the base compose, so
+# there is no per-app .env / --env-file port injection.
+[Unit]
+Description=wb-docker-app service %i (docker compose)
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=WB_BASE=/usr/lib/wb-docker-app/%i/docker-compose.yml
+Environment=WB_OVERRIDE=/mnt/data/wb-docker-apps/%i/docker-compose.override.yml
+ExecStart=/usr/bin/docker compose -p wb-%i -f ${WB_BASE} -f ${WB_OVERRIDE} up -d
+ExecStop=/usr/bin/docker compose -p wb-%i -f ${WB_BASE} -f ${WB_OVERRIDE} down
+
+[Install]
+WantedBy=multi-user.target
