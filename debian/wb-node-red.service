@@ -1,0 +1,28 @@
+[Unit]
+Description=Node-RED for Wiren Board
+Documentation=https://wiki.wirenboard.com/wiki/Node-RED
+After=network.target mosquitto.service
+Wants=network.target
+# The runtime tree and the userDir both live on /mnt/data — wait for that mount
+# before starting (it may come up after the root filesystem).
+RequiresMountsFor=/mnt/data
+
+[Service]
+Type=simple
+User=wb-node-red
+Group=wb-node-red
+ExecStart=/usr/bin/node /mnt/data/wb-node-red-runtime/node_modules/node-red/red.js --settings /usr/lib/wb-node-red/settings.js
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGINT
+
+# Hardening: Node-RED is RCE-capable, so confine it. It only needs to write to
+# its userDir; the runtime tree on /mnt/data and everything else stay read-only.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/mnt/data/wb-node-red
+
+[Install]
+WantedBy=multi-user.target

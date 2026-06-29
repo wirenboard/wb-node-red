@@ -1,0 +1,44 @@
+#!/usr/bin/make -f
+# Build wb-node-red: vendor node-red + the WB palette via npm (--omit=optional ->
+# pure-JS, Architecture: all). The runtime tree ships as a tarball under
+# /usr/share; postinst extracts it to /mnt/data (off the tight root).
+export DH_VERBOSE = 1
+
+DESTDIR  := debian/wb-node-red
+LIBDIR   := $(DESTDIR)/usr/lib/wb-node-red
+SHAREDIR := $(DESTDIR)/usr/share/wb-node-red
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cd vendor && npm ci --omit=dev --omit=optional --no-audit --no-fund
+	# CRA: emit a CycloneDX SBOM of the exact vendored tree (needs npm >= 10),
+	# shipped in the package so the bill of materials travels with the artifact.
+	cd vendor && npm sbom --sbom-format cyclonedx --omit=dev --omit=optional > sbom.cdx.json
+
+override_dh_auto_install:
+	# Runtime code → a reproducible tarball under /usr/share (postinst extracts
+	# it to /mnt/data). settings.js + seeds + nginx + apt drop-in go to /usr & /etc.
+	install -d $(SHAREDIR)
+	tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
+		-czf $(SHAREDIR)/node_modules.tar.gz -C vendor node_modules
+	install -D -m 0644 config/settings.js $(LIBDIR)/settings.js
+	install -D -m 0644 config/flows.json $(SHAREDIR)/flows.json
+	install -D -m 0644 config/custom-menu.json $(SHAREDIR)/custom-menu.json
+	install -D -m 0644 nginx/wb-node-red.conf $(SHAREDIR)/nginx/wb-node-red.conf
+	install -D -m 0644 nginx/wb-node-red-auth-cache.conf $(SHAREDIR)/nginx/wb-node-red-auth-cache.conf
+	install -D -m 0644 nginx/wb-node-red-redirect.conf $(SHAREDIR)/nginx/wb-node-red-redirect.conf
+	install -D -m 0644 apt/52wb-node-red-no-unattended $(DESTDIR)/etc/apt/apt.conf.d/52wb-node-red-no-unattended
+	install -D -m 0644 vendor/sbom.cdx.json $(DESTDIR)/usr/share/wb-node-red/sbom.cdx.json
+
+override_dh_installsystemd:
+	# Stop on upgrade before the swap, start after — avoids the editor-port
+	# collision when the new process starts while the old one is still bound.
+	dh_installsystemd --no-restart-after-upgrade
+
+override_dh_auto_test:
+
+override_dh_auto_clean:
+	rm -rf vendor/node_modules
+	rm -f vendor/sbom.cdx.json
