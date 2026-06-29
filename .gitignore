@@ -1,0 +1,26 @@
+# vendored npm tree — fetched at build time, never committed
+vendor/node_modules/
+
+# build artefacts
+debian/wb-node-red/
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/*.debhelper.log
+../*.deb
+../*.buildinfo
+../*.changes
+
+# python dev tooling
+__pycache__/
+.pytest_cache/
+.venv/
+
+# IDE
+.idea/
+
+# internal/AI working docs — kept locally, not tracked
+.docs/
+
+# local build output (.deb)
+dist/

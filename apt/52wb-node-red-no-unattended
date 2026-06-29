@@ -1,0 +1,6 @@
+// Keep wb-node-red updates explicit: never let unattended-upgrades bump it.
+// A Node-RED upgrade restarts the editor/runtime, so it should be a deliberate
+// `apt upgrade`, not a background event.
+Unattended-Upgrade::Package-Blacklist {
+    "wb-node-red";
+};
