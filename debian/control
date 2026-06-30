@@ -1,0 +1,31 @@
+Source: wb-node-red
+Section: misc
+Priority: optional
+Maintainer: Wiren Board Team <info@wirenboard.com>
+Build-Depends: debhelper-compat (= 13),
+ nodejs (>= 22.9)
+Standards-Version: 4.6.2
+Homepage: https://wirenboard.com
+Rules-Requires-Root: no
+
+Package: wb-node-red
+Architecture: all
+Depends: ${misc:Depends},
+ nodejs (>= 22.9),
+ adduser
+Recommends: nginx, mosquitto, wb-mqtt-homeui (>= 2.235.4)
+Description: Node-RED for Wiren Board controllers (native)
+ Runs Node-RED natively on the controller host as a systemd service, with the
+ Wiren Board palette (node-red-contrib-wirenboard) and a default flow pre-wired
+ to the local MQTT broker on localhost:1883 and the device tree (/devices/#).
+ .
+ Node-RED and the palette are vendored into the package at build time, so no
+ npm download or native compilation happens on the controller; Node.js comes
+ from the distribution (Depends: nodejs) so its security updates flow from the
+ Wiren Board / Debian repository.
+ .
+ The service runs as a dedicated unprivileged user with the editor bound to
+ loopback and reverse-proxied on a dedicated HTTPS port (21880) behind the homeui
+ login (admin only); the old /node-red/ path is kept as a redirect to that port.
+ User data and the runtime tree persist under /mnt/data across upgrades and
+ updates are explicit (the package is excluded from unattended-upgrades).
