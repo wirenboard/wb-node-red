@@ -1,0 +1,15 @@
+{
+  "id": "integrations",
+  "children": [
+    {
+      "id": "node-red",
+      "url": "/node-red/",
+      "isExternal": true,
+      "openInNewTab": true,
+      "title": {
+        "ru": "Node-RED",
+        "en": "Node-RED"
+      }
+    }
+  ]
+}

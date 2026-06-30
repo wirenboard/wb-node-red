@@ -163,3 +163,58 @@ def test_vendor_pins_node_red_and_wb_palette():
     deps = pkg.get("dependencies", {})
     assert "node-red" in deps
     assert "node-red-contrib-wirenboard" in deps
+
+
+# --- settings ---------------------------------------------------------------
+
+def test_settings_bind_loopback_and_mnt_data():
+    settings = _read("config/settings.js")
+    assert 'uiHost: "127.0.0.1"' in settings
+    assert "uiPort: 1880" in settings
+    assert 'httpAdminRoot: "/"' in settings
+    assert '/mnt/data/wb-node-red' in settings
+    # no adminAuth setting — nginx is the auth boundary (match the key form).
+    assert "adminAuth:" not in settings
+
+
+# --- default flow -----------------------------------------------------------
+
+def test_flow_points_at_local_broker_and_device_tree():
+    flows = json.loads(_read("config/flows.json"))
+    brokers = [n for n in flows if n.get("type") == "mqtt-broker"]
+    assert brokers, "expected a pre-wired mqtt-broker node"
+    # 127.0.0.1, not "localhost": under verbatim DNS (Node >= 17) localhost can
+    # resolve to ::1 first, but mosquitto usually listens IPv4-only.
+    assert brokers[0]["broker"] == "127.0.0.1"
+    assert brokers[0]["port"] == "1883"
+    topics = [n.get("topic") for n in flows if n.get("type") == "mqtt in"]
+    assert "/devices/#" in topics
+
+
+# --- homeui menu integration ------------------------------------------------
+
+def test_custom_menu_dropin_targets_node_red_as_external():
+    menu = json.loads(_read("config/custom-menu.json"))
+    assert menu["id"] == "integrations"
+    nodered = [c for c in menu.get("children", []) if c.get("id") == "node-red"]
+    assert nodered, "expected a node-red child entry"
+    entry = nodered[0]
+    # still /node-red/ — the redirect drop-in bounces it to the port.
+    assert entry["url"] == "/node-red/"
+    # isExternal renders a full-page <a>; openInNewTab keeps homeui put (>= 2.235.4).
+    assert entry["isExternal"] is True
+    assert entry["openInNewTab"] is True
+    assert entry.get("title", {}).get("en") and entry["title"].get("ru")
+
+
+def test_menu_dropin_gated_on_homeui_version_and_cleaned_up():
+    rules = _read("debian/rules")
+    postinst = _read("debian/postinst")
+    postrm = _read("debian/postrm")
+    assert "custom-menu.json" in rules
+    assert "/usr/share/wb-node-red/custom-menu.json" in postinst
+    # placed into homeui's drop-in dir only on a homeui that renders isExternal.
+    assert "/usr/share/wb-mqtt-homeui/custom-menu" in postinst
+    assert 'dpkg --compare-versions "$homeui_ver" ge "2.235.4~"' in postinst
+    assert "/usr/share/wb-mqtt-homeui/custom-menu/wb-node-red.json" in postrm
+    assert "wb-mqtt-homeui" in _read("debian/control")
