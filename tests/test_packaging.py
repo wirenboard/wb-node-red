@@ -154,3 +154,12 @@ def test_postrm_removes_runtime_but_preserves_user_data():
     assert 'rm -rf "/mnt/data/wb-node-red"' not in postrm
     assert "$DATA_DIR" not in postrm
     assert "nginx -t" in postrm
+
+
+# --- vendoring --------------------------------------------------------------
+
+def test_vendor_pins_node_red_and_wb_palette():
+    pkg = json.loads(_read("vendor/package.json"))
+    deps = pkg.get("dependencies", {})
+    assert "node-red" in deps
+    assert "node-red-contrib-wirenboard" in deps
