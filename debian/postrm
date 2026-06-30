@@ -1,0 +1,37 @@
+#!/bin/sh
+# Drop the nginx site and the runtime tree on remove/purge; remove the service
+# user on purge. User data under /mnt/data/wb-node-red is intentionally kept.
+set -e
+
+SVC_USER="wb-node-red"
+RUNTIME_DIR="/mnt/data/wb-node-red-runtime"
+NGINX_GATE="/etc/nginx/conf.d/wb-node-red.conf"
+NGINX_CACHE="/etc/nginx/conf.d/wb-node-red-auth-cache.conf"
+NGINX_REDIR="/etc/nginx/includes/default.wb.d/wb-node-red-redirect.conf"
+HOMEUI_MENU="/usr/share/wb-mqtt-homeui/custom-menu/wb-node-red.json"
+
+case "$1" in
+    remove|purge)
+        rm -f "$NGINX_GATE" "$NGINX_CACHE" "$NGINX_REDIR"
+        rm -rf /run/wb-node-red-auth-cache
+        if command -v nginx >/dev/null 2>&1 && nginx -t >/dev/null 2>&1; then
+            invoke-rc.d nginx reload >/dev/null 2>&1 || systemctl reload nginx >/dev/null 2>&1 || true
+        fi
+        rm -f "$HOMEUI_MENU"
+        # Runtime code is package-owned (extracted, dpkg-untracked) — remove it.
+        # The user data dir is never touched here.
+        rm -rf "$RUNTIME_DIR"
+        ;;
+esac
+
+case "$1" in
+    purge)
+        if getent passwd "$SVC_USER" >/dev/null 2>&1; then
+            deluser --system "$SVC_USER" >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -101,3 +101,56 @@ def test_control_description_mentions_port_gate():
     assert "21880" in control
     assert "/node-red/" in control
     assert "served as the /node-red/ path" not in control
+
+
+def test_postinst_installs_port_gate_with_cert_check_and_rollback():
+    """The gate is placed in conf.d, the redirect in the homeui block; postinst
+    skips when the sslip cert is absent and rolls all three files back on nginx -t."""
+    postinst = _read("debian/postinst")
+    assert 'NGINX_GATE_DST="$NGINX_CONFD/wb-node-red.conf"' in postinst
+    assert 'NGINX_CACHE_DST="$NGINX_CONFD/wb-node-red-auth-cache.conf"' in postinst
+    assert 'NGINX_REDIR_DST="$NGINX_WB_D/wb-node-red-redirect.conf"' in postinst
+    assert "/etc/ssl/sslip.pem" in postinst
+    assert "nginx -t" in postinst
+    assert 'rm -f "$NGINX_GATE_DST" "$NGINX_CACHE_DST" "$NGINX_REDIR_DST"' in postinst
+    # the gate includes homeui snippets, so install only on homeui >= 2.235.4.
+    assert "2.235.4" in postinst
+
+
+# --- runtime tree lives on /mnt/data, not the tight root --------------------
+
+def test_runtime_tree_delivered_to_mnt_data_consistently():
+    """The node_modules tree ships as a tarball under /usr/share and is extracted
+    to /mnt/data; rules, postinst and the unit must agree on the same path."""
+    rules = _read("debian/rules")
+    postinst = _read("debian/postinst")
+    unit = _read("debian/wb-node-red.service")
+
+    assert "node_modules.tar.gz" in rules
+    assert "cp -a vendor/node_modules" not in rules
+    assert "/usr/lib/wb-node-red/node_modules" not in rules
+
+    assert "/usr/share/wb-node-red/node_modules.tar.gz" in postinst
+    assert "/mnt/data/wb-node-red-runtime" in postinst
+    assert "tar -xzf" in postinst
+
+    assert "/mnt/data/wb-node-red-runtime/node_modules/node-red/red.js" in unit
+
+
+def test_postinst_guards_mount_and_never_clobbers_user_flows():
+    postinst = _read("debian/postinst")
+    assert "mountpoint -q /mnt/data" in postinst
+    # seed flows only if absent — an upgrade must not overwrite the user's flows.
+    assert '[ ! -e "$DATA_DIR/flows.json" ]' in postinst
+    assert "nginx -t" in postinst
+
+
+def test_postrm_removes_runtime_but_preserves_user_data():
+    postrm = _read("debian/postrm")
+    assert "/mnt/data/wb-node-red-runtime" in postrm
+    assert 'rm -rf "$RUNTIME_DIR"' in postrm
+    assert "deluser --system" in postrm
+    # the user data dir is NEVER removed automatically.
+    assert 'rm -rf "/mnt/data/wb-node-red"' not in postrm
+    assert "$DATA_DIR" not in postrm
+    assert "nginx -t" in postrm
