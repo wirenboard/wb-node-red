@@ -29,7 +29,7 @@ def _nginx_location_blocks(conf: str) -> list:
 # --- explicit updates -------------------------------------------------------
 
 def test_excluded_from_unattended_upgrades():
-    apt = _read("apt/52wb-node-red-no-unattended")
+    apt = _read("debian/52wb-node-red-no-unattended")
     assert "wb-node-red" in apt
     assert "Package-Blacklist" in apt
 
@@ -89,11 +89,15 @@ def test_rules_stops_service_across_the_upgrade_swap():
 # --- SBOM (CRA) -------------------------------------------------------------
 
 def test_rules_emits_and_ships_cyclonedx_sbom():
-    """CRA: the build emits a CycloneDX SBOM of the vendored tree and ships it."""
+    """CRA: the build emits a CycloneDX SBOM of the vendored tree and ships it.
+
+    The SBOM is generated in debian/rules and installed via the .install file."""
     rules = _read("debian/rules")
     assert "npm sbom" in rules
     assert "cyclonedx" in rules.lower()
-    assert "usr/share/wb-node-red/sbom.cdx.json" in rules
+    install = _read("debian/wb-node-red.install")
+    assert "sbom.cdx.json" in install
+    assert "usr/share/wb-node-red" in install
 
 
 def test_control_description_mentions_port_gate():

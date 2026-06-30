@@ -1,0 +1,8 @@
+config/settings.js                  usr/lib/wb-node-red
+config/flows.json                   usr/share/wb-node-red
+config/custom-menu.json             usr/share/wb-node-red
+nginx/wb-node-red.conf              usr/share/wb-node-red/nginx
+nginx/wb-node-red-auth-cache.conf  usr/share/wb-node-red/nginx
+nginx/wb-node-red-redirect.conf    usr/share/wb-node-red/nginx
+debian/52wb-node-red-no-unattended etc/apt/apt.conf.d
+vendor/sbom.cdx.json               usr/share/wb-node-red

@@ -3,9 +3,7 @@
 # postinst extracts it to /mnt/data.
 export DH_VERBOSE = 1
 
-DESTDIR  := debian/wb-node-red
-LIBDIR   := $(DESTDIR)/usr/lib/wb-node-red
-SHAREDIR := $(DESTDIR)/usr/share/wb-node-red
+SHAREDIR := debian/wb-node-red/usr/share/wb-node-red
 
 %:
 	dh $@
@@ -18,18 +16,11 @@ override_dh_auto_build:
 	cd vendor && npm sbom --sbom-format cyclonedx --omit=dev --omit=optional > sbom.cdx.json
 
 override_dh_auto_install:
-	# Runtime tree -> reproducible tarball under /usr/share (postinst extracts it).
+	# Static files are declared in debian/wb-node-red.install; here we only build
+	# the runtime tree into a reproducible tarball (postinst extracts it).
 	install -d $(SHAREDIR)
 	tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
 		-czf $(SHAREDIR)/node_modules.tar.gz -C vendor node_modules
-	install -D -m 0644 config/settings.js $(LIBDIR)/settings.js
-	install -D -m 0644 config/flows.json $(SHAREDIR)/flows.json
-	install -D -m 0644 config/custom-menu.json $(SHAREDIR)/custom-menu.json
-	install -D -m 0644 nginx/wb-node-red.conf $(SHAREDIR)/nginx/wb-node-red.conf
-	install -D -m 0644 nginx/wb-node-red-auth-cache.conf $(SHAREDIR)/nginx/wb-node-red-auth-cache.conf
-	install -D -m 0644 nginx/wb-node-red-redirect.conf $(SHAREDIR)/nginx/wb-node-red-redirect.conf
-	install -D -m 0644 apt/52wb-node-red-no-unattended $(DESTDIR)/etc/apt/apt.conf.d/52wb-node-red-no-unattended
-	install -D -m 0644 vendor/sbom.cdx.json $(DESTDIR)/usr/share/wb-node-red/sbom.cdx.json
 
 override_dh_installsystemd:
 	# Stop before the upgrade swap, start after — avoids an editor-port collision.
