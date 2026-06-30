@@ -1,0 +1,103 @@
+#!/bin/sh
+# Create the service user, place the runtime tree and user data under /mnt/data,
+# and wire the nginx auth-gate.
+set -e
+
+SVC_USER="wb-node-red"
+DATA_DIR="/mnt/data/wb-node-red"
+RUNTIME_DIR="/mnt/data/wb-node-red-runtime"
+RUNTIME_TARBALL="/usr/share/wb-node-red/node_modules.tar.gz"
+SEED_FLOWS="/usr/share/wb-node-red/flows.json"
+NGINX_GATE_SRC="/usr/share/wb-node-red/nginx/wb-node-red.conf"
+NGINX_CONFD="/etc/nginx/conf.d"
+NGINX_GATE_DST="$NGINX_CONFD/wb-node-red.conf"
+NGINX_CACHE_SRC="/usr/share/wb-node-red/nginx/wb-node-red-auth-cache.conf"
+NGINX_CACHE_DST="$NGINX_CONFD/wb-node-red-auth-cache.conf"
+NGINX_REDIR_SRC="/usr/share/wb-node-red/nginx/wb-node-red-redirect.conf"
+NGINX_WB_D="/etc/nginx/includes/default.wb.d"
+NGINX_REDIR_DST="$NGINX_WB_D/wb-node-red-redirect.conf"
+SSLIP_CERT="/etc/ssl/sslip.pem"
+SSLIP_KEY="/etc/ssl/sslip.key"
+HOMEUI_MENU_SRC="/usr/share/wb-node-red/custom-menu.json"
+HOMEUI_MENU_DIR="/usr/share/wb-mqtt-homeui/custom-menu"
+HOMEUI_MENU_DST="$HOMEUI_MENU_DIR/wb-node-red.json"
+
+case "$1" in
+    configure)
+        # All our state lives on /mnt/data; bail rather than unpack onto the root.
+        if ! mountpoint -q /mnt/data; then
+            echo "wb-node-red: /mnt/data is not mounted — aborting (runtime and user data live there)." >&2
+            exit 1
+        fi
+
+        if ! getent passwd "$SVC_USER" >/dev/null 2>&1; then
+            adduser --system --group --no-create-home \
+                --home "$DATA_DIR" \
+                --gecos "Wiren Board Node-RED" \
+                "$SVC_USER"
+        fi
+
+        # Swap the runtime tree in atomically: stop the service, extract into a
+        # staging dir, then rename into place — a failed extract leaves the old
+        # tree intact and self-heals on the next configure.
+        if [ -f "$RUNTIME_TARBALL" ]; then
+            deb-systemd-invoke stop wb-node-red.service >/dev/null 2>&1 || true
+            mkdir -p "$RUNTIME_DIR"
+            rm -rf "$RUNTIME_DIR/node_modules.staging"
+            mkdir -p "$RUNTIME_DIR/node_modules.staging"
+            tar -xzf "$RUNTIME_TARBALL" -C "$RUNTIME_DIR/node_modules.staging"
+            rm -rf "$RUNTIME_DIR/node_modules.old"
+            [ -e "$RUNTIME_DIR/node_modules" ] && \
+                mv "$RUNTIME_DIR/node_modules" "$RUNTIME_DIR/node_modules.old"
+            mv "$RUNTIME_DIR/node_modules.staging/node_modules" "$RUNTIME_DIR/node_modules"
+            rm -rf "$RUNTIME_DIR/node_modules.old" "$RUNTIME_DIR/node_modules.staging"
+        fi
+
+        # User data: seed flows only if absent, never overwrite on upgrade.
+        mkdir -p "$DATA_DIR"
+        if [ ! -e "$DATA_DIR/flows.json" ] && [ -f "$SEED_FLOWS" ]; then
+            cp "$SEED_FLOWS" "$DATA_DIR/flows.json"
+        fi
+        chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
+
+        # nginx gate: needs homeui >= 2.235.4 (snippets) and the sslip cert; skip
+        # if missing, and roll back all three files on a failed nginx -t.
+        homeui_ver="$(dpkg-query -W -f='${Version}' wb-mqtt-homeui 2>/dev/null || true)"
+        if [ -z "$homeui_ver" ] || ! dpkg --compare-versions "$homeui_ver" ge "2.235.4~"; then
+            echo "wb-node-red: wb-mqtt-homeui >= 2.235.4 (service-gate snippets) not installed — skipping the Node-RED port-gate." >&2
+        elif [ ! -f "$SSLIP_CERT" ] || [ ! -f "$SSLIP_KEY" ]; then
+            echo "wb-node-red: sslip cert ($SSLIP_CERT) not found — skipping the Node-RED port-gate. Open homeui over https once to generate it, then reinstall wb-node-red." >&2
+        elif [ -d "$NGINX_CONFD" ] && [ -f "$NGINX_GATE_SRC" ]; then
+            # Cache zone first (the gate references it), then the gate, then the redirect.
+            [ -f "$NGINX_CACHE_SRC" ] && cp "$NGINX_CACHE_SRC" "$NGINX_CACHE_DST"
+            cp "$NGINX_GATE_SRC" "$NGINX_GATE_DST"
+            if [ -d "$NGINX_WB_D" ] && [ -f "$NGINX_REDIR_SRC" ]; then
+                cp "$NGINX_REDIR_SRC" "$NGINX_REDIR_DST"
+            fi
+            if command -v nginx >/dev/null 2>&1; then
+                if nginx -t >/dev/null 2>&1; then
+                    invoke-rc.d nginx reload >/dev/null 2>&1 || systemctl reload nginx >/dev/null 2>&1 || true
+                else
+                    echo "wb-node-red: nginx config test failed with the Node-RED port-gate; removing it to protect homeui." >&2
+                    rm -f "$NGINX_GATE_DST" "$NGINX_CACHE_DST" "$NGINX_REDIR_DST"
+                fi
+            fi
+        fi
+
+        # homeui menu entry: only on a homeui that renders it (same 2.235.4 gate).
+        if [ -d "$HOMEUI_MENU_DIR" ] && [ -f "$HOMEUI_MENU_SRC" ]; then
+            if [ -n "$homeui_ver" ] && dpkg --compare-versions "$homeui_ver" ge "2.235.4~"; then
+                cp "$HOMEUI_MENU_SRC" "$HOMEUI_MENU_DST"
+            else
+                rm -f "$HOMEUI_MENU_DST"
+            fi
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
