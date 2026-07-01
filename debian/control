@@ -5,7 +5,7 @@ Maintainer: Wiren Board Team <info@wirenboard.com>
 Build-Depends: debhelper-compat (= 13),
  nodejs (>= 22.9)
 Standards-Version: 4.6.2
-Homepage: https://wirenboard.com
+Homepage: https://github.com/wirenboard/wb-node-red
 Rules-Requires-Root: no
 
 Package: wb-node-red
