@@ -29,7 +29,7 @@ def _nginx_location_blocks(conf: str) -> list:
 # --- explicit updates -------------------------------------------------------
 
 def test_excluded_from_unattended_upgrades():
-    apt = _read("debian/52wb-node-red-no-unattended")
+    apt = _read("52wb-node-red")
     assert "wb-node-red" in apt
     assert "Package-Blacklist" in apt
 
