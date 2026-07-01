@@ -88,16 +88,14 @@ def test_rules_stops_service_across_the_upgrade_swap():
 
 # --- SBOM (CRA) -------------------------------------------------------------
 
-def test_rules_emits_and_ships_cyclonedx_sbom():
-    """CRA: the build emits a CycloneDX SBOM of the vendored tree and ships it.
+def test_rules_emits_cyclonedx_sbom():
+    """CRA: the build emits a CycloneDX SBOM of the vendored tree in debian/rules.
 
-    The SBOM is generated in debian/rules and installed via the .install file."""
+    Shipping it via .install is asserted in the vendor layer (where the SBOM
+    and its .install line are introduced)."""
     rules = _read("debian/rules")
     assert "npm sbom" in rules
     assert "cyclonedx" in rules.lower()
-    install = _read("debian/wb-node-red.install")
-    assert "sbom.cdx.json" in install
-    assert "usr/share/wb-node-red" in install
 
 
 def test_control_description_mentions_port_gate():
