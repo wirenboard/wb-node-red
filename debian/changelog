@@ -1,19 +1,9 @@
 wb-node-red (1.0.0) stable; urgency=medium
 
-  * Initial release: `apt install wb-node-red` runs Node-RED natively on the
-    Wiren Board controller.
-    - Node-RED + WB palette (node-red-contrib-wirenboard) vendored at build time;
-      Node.js from the distro (Depends: nodejs);
-    - dedicated unprivileged, hardened systemd service; editor on loopback (1880);
-    - reverse-proxied on a dedicated HTTPS port (21880) behind the homeui login
-      (admin only); old /node-red/ kept as a redirect; unauth browsers -> login,
-      API/CLI -> 401;
-    - gate reuses the wb-mqtt-homeui (>= 2.235.4) service-gate snippets and adds a
-      per-session /auth/check cache (mutations bypass it) for the editor's burst;
-    - default flow wired to localhost:1883 and /devices/#;
-    - homeui "Node-RED" menu entry (homeui >= 2.235.4);
-    - user data + runtime under /mnt/data; excluded from unattended-upgrades;
-    - CycloneDX SBOM shipped (EU CRA).
-    Note: reachable on the LAN, not via the WB Cloud tunnel (forwards only 443).
+  * Initial release: native Node-RED for Wiren Board, installed with
+    `apt install wb-node-red`.
+    - Node-RED + WB palette vendored at build time; Node.js from the distro.
+    - Hardened systemd service, editor on loopback behind the homeui admin gate
+      on a dedicated HTTPS port (21880); user data and runtime under /mnt/data.
 
- -- Denis Smagin <denis.smagin@wirenboard.com>  Fri, 26 Jun 2026 20:00:00 +0200
+ -- Denis Smagin <denis.smagin@wirenboard.com>  Wed, 01 Jul 2026 10:12:03 +0200

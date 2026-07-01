@@ -7,9 +7,6 @@ debian/.debhelper/
 debian/files
 debian/*.substvars
 debian/*.debhelper.log
-../*.deb
-../*.buildinfo
-../*.changes
 
 # python dev tooling
 __pycache__/
