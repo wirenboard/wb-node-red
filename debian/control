@@ -2,8 +2,13 @@ Source: wb-node-red
 Section: misc
 Priority: optional
 Maintainer: Wiren Board Team <info@wirenboard.com>
+# npm is deliberately NOT declared: the WB build env installs nodesource
+# nodejs, which bundles npm >= 10 and conflicts with Debian's separate npm
+# package — declaring it would pull a second, incompatible Node into the chroot.
 Build-Depends: debhelper-compat (= 13),
- nodejs (>= 22.9)
+ nodejs (>= 22.9),
+ python3,
+ python3-pytest
 Standards-Version: 4.6.2
 Homepage: https://github.com/wirenboard/wb-node-red
 Rules-Requires-Root: no
