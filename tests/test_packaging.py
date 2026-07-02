@@ -186,3 +186,13 @@ def test_postrm_removes_runtime_but_preserves_user_data():
     assert 'rm -rf "/mnt/data/wb-node-red"' not in postrm
     assert "$DATA_DIR" not in postrm
     assert "nginx -t" in postrm
+
+
+def test_debhelper_token_appears_exactly_once_per_maintainer_script():
+    """debhelper substitutes EVERY literal token occurrence, comments included —
+    a stray mention splices generated code into a comment (field-found, exit 127)."""
+    for script in ("debian/postinst", "debian/postrm"):
+        lines = [l for l in _read(script).splitlines() if "#DEBHELPER#" in l]
+        assert lines == ["#DEBHELPER#"], (
+            f"{script}: the debhelper token must appear exactly once, "
+            f"alone on its line; found {lines!r}")

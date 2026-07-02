@@ -143,8 +143,8 @@ case "$1" in
         if [ -f "$RUNTIME_TARBALL" ]; then
             deb-systemd-invoke stop wb-node-red.service >/dev/null 2>&1 || true
             mkdir -p "$RUNTIME_DIR"
-            # If anything below fails, set -e skips the #DEBHELPER# start; the
-            # trap restarts the service (on success the extra start is a no-op).
+            # If anything below fails, set -e skips the generated start at the
+            # bottom; the trap restarts the service (extra start = no-op).
             trap 'deb-systemd-invoke start wb-node-red.service >/dev/null 2>&1 || true' EXIT
             # Stage on the same filesystem, swap in with renames — a failed
             # extract leaves the old runtime intact; the tarball under
