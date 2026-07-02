@@ -4,10 +4,7 @@ Documentation=https://wiki.wirenboard.com/wiki/Node-RED
 After=network.target mosquitto.service
 # Runtime tree and userDir both live on /mnt/data — wait for that mount.
 RequiresMountsFor=/mnt/data
-# Bound the crash loop: a service that cannot start (runtime missing after an
-# interrupted swap, port taken) must end in a loud `failed` state, not respawn
-# every 5 s forever on flash. The default 10 s window never trips with
-# RestartSec=5.
+# Bound the crash loop: fail loud instead of respawning every 5 s forever.
 StartLimitIntervalSec=200
 StartLimitBurst=5
 
