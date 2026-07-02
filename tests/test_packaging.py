@@ -38,8 +38,7 @@ def test_excluded_from_unattended_upgrades():
 
 def test_control_depends_on_distro_nodejs():
     control = _read("debian/control")
-    # nodejs must sit in the RUNTIME Depends stanza (distro-provided, CRA-shared
-    # patching) — `"nodejs" in control` would be satisfied by Build-Depends alone.
+    # in the runtime Depends stanza, not just Build-Depends
     assert re.search(r"^Depends:(?:.|\n )*\bnodejs\b", control, re.MULTILINE), \
         "nodejs missing from the runtime Depends field"
 
@@ -67,35 +66,27 @@ def test_service_is_hardened():
     assert "ProtectSystem=strict" in unit
     assert "ProtectHome=true" in unit
     assert "PrivateTmp=true" in unit
-    # a service that can't start (interrupted swap, port taken) must end in a
-    # loud `failed` state, not respawn every 5 s forever on flash storage.
+    # crash loop must be bounded
     assert "StartLimitIntervalSec=" in unit
     assert "StartLimitBurst=" in unit
 
 
 def test_rules_vendors_without_compilation():
     rules = _read("debian/rules")
-    # npm ci runs WITHOUT --omit=optional (npm's bundled minipass-fetch needs
-    # its nested optional iconv-lite@0.7.x or `npm sbom` breaks) — arch:all
-    # purity comes from the @node-rs strip + the *.node invariant instead.
+    # noarch comes from the @node-rs strip + *.node invariant, NOT from
+    # --omit=optional on npm ci (that would break npm sbom)
     ci_lines = [l for l in rules.splitlines() if "npm ci" in l]
     assert ci_lines, "expected the npm ci vendoring line"
     assert all("--omit=optional" not in l for l in ci_lines)
-    # the real noarch guard: strip the platform-specific binding, then fail the
-    # build if ANY native binary remains in the tree.
     assert "rm -rf vendor/node_modules/@node-rs" in rules
     assert re.search(r"find vendor/node_modules -name '\*\.node'", rules)
-    # the SBOM (and only the SBOM) still omits optionals, matching the strip.
     assert re.search(r"npm sbom .*--omit=optional", rules)
 
 
 def test_rules_runs_the_suite_in_dh_auto_test():
-    """The suite must run inside every package build (dh_auto_test), not only
-    when a developer remembers pytest locally — otherwise the invariants it
-    pins can drift through CI unnoticed."""
+    """The suite runs in every build (dh_auto_test), honoring nocheck."""
     rules = _read("debian/rules")
     assert "python3 -m pytest" in rules
-    # respect DEB_BUILD_OPTIONS=nocheck, the standard skip switch.
     assert "nocheck" in rules
     assert "python3-pytest" in _read("debian/control")
 

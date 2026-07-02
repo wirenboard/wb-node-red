@@ -12,14 +12,10 @@ override_dh_auto_build:
 	cd vendor && npm ci --omit=dev --no-audit --no-fund
 	# drop the platform-specific @node-rs/bcrypt to keep Architecture: all (NR5 falls back to bcryptjs)
 	rm -rf vendor/node_modules/@node-rs
-	# arch:all invariant: nothing platform-specific may remain — a future bump
-	# pulling a new native optional dep must fail the build here, not
-	# require-fail on armhf/arm64 controllers in the field.
+	# arch:all invariant: no native binary may survive the strip
 	test -z "$$(find vendor/node_modules -name '*.node' -print -quit)"
 	# CRA: ship a CycloneDX SBOM of the vendored tree (needs npm >= 10).
-	# --omit=optional keeps the stripped @node-rs binaries out of the SBOM; the
-	# accepted deviation is that npm's two nested pure-JS optional helpers
-	# (iconv-lite@0.7.x, safer-buffer) ship in the tarball but are not listed.
+	# --omit=optional mirrors the strip; npm's nested pure-JS optionals ship unlisted.
 	cd vendor && npm sbom --sbom-format cyclonedx --omit=dev --omit=optional > sbom.cdx.json
 
 override_dh_auto_install:
@@ -34,8 +30,6 @@ override_dh_installsystemd:
 	dh_installsystemd --no-restart-after-upgrade
 
 override_dh_auto_test:
-	# The packaging suite is pure file-reading checks — run it on every build so
-	# the invariants it pins can't drift through CI unnoticed.
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	python3 -m pytest tests/ -q
 endif
