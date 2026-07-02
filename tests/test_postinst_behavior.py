@@ -1,11 +1,5 @@
-"""Behavior tests for debian/postinst.
-
-Each test runs the real `sh debian/postinst configure` against a throwaway
-root (re-rooted via the WB_NODE_RED_ROOT seam) with the system commands
-stubbed on PATH, then asserts on the resulting filesystem state — the swap's
-crash-safety, the homeui/cert gating matrix, the nginx -t restore path and the
-menu<->gate coupling, none of which a string-grep test can pin.
-"""
+"""Behavior tests: run the real `sh debian/postinst` against a throwaway root
+(WB_NODE_RED_ROOT seam) with system commands stubbed on PATH."""
 
 import os
 import stat
@@ -21,8 +15,7 @@ POSTINST = REPO / "debian" / "postinst"
 HOMEUI_OK = "2.235.4"
 HOMEUI_OLD = "2.226.1"
 
-# dpkg is stubbed with just enough of the real thing: `--compare-versions A op B`
-# with Debian ordering (incl. `~` sorting before everything, even end-of-string).
+# dpkg stub: `--compare-versions A op B` with real Debian ordering (incl. `~`)
 DPKG_STUB = """#!/usr/bin/env python3
 import sys
 
@@ -75,8 +68,8 @@ ok = {"lt": r < 0, "le": r <= 0, "eq": r == 0, "ge": r >= 0, "gt": r > 0}[op]
 sys.exit(0 if ok else 1)
 """
 
+# STUB_* env knobs let each test drive a branch without editing the stubs
 SHELL_STUBS = {
-    # env knobs let each test drive a branch without editing the stubs.
     "mountpoint": '#!/bin/sh\nexit "${STUB_MOUNTPOINT_RC:-0}"\n',
     "getent": "#!/bin/sh\nexit 0\n",  # service user "already exists"
     "adduser": "#!/bin/sh\nexit 0\n",
@@ -86,8 +79,6 @@ SHELL_STUBS = {
     "systemctl": (
         "#!/bin/sh\n"
         'echo "systemctl $*" >> "$STUB_LOG"\n'
-        # is-active drives the foreign-port-1880 check: 0 = our unit is active
-        # (so any 1880 listener is ours), non-zero = stopped/failed.
         'if [ "$1" = "is-active" ]; then exit "${STUB_UNIT_ACTIVE_RC:-0}"; fi\n'
         "exit 0\n"
     ),
@@ -129,10 +120,8 @@ class Sandbox:
                   self.root / "etc/ssl", self.share / "nginx", self.menu_dir):
             d.mkdir(parents=True)
 
-        # Package payload, as the build would install it. postinst only copies
-        # these files, so their content is irrelevant here — and the nginx confs
-        # and config seeds live in later PRs of the stack; fall back to
-        # placeholders when a payload file is not in this tree yet.
+        # Payload content is irrelevant (postinst only copies it); placeholders
+        # cover files that live in later PRs of the stack.
         def payload(rel: str) -> str:
             src = REPO / rel
             return src.read_text() if src.exists() else f"# placeholder for {rel}\n"
@@ -256,10 +245,8 @@ def test_corrupt_tarball_keeps_old_runtime_and_restarts_the_service(sb):
     sb.corrupt_tarball()
     res = sb.run()
     assert res.returncode != 0
-    # the previously working runtime is untouched...
     assert sb.runtime_marker() == "previous"
-    # ...and the EXIT trap restarted the service on it (the #DEBHELPER# start
-    # never runs when set -e aborts), so the user's flows are not left down.
+    # the EXIT trap restarted the service on the intact old runtime
     assert "deb-systemd-invoke start wb-node-red.service" in sb.log_text()
 
 
@@ -285,8 +272,7 @@ def test_unmounted_mnt_data_aborts_before_touching_anything(sb):
 # --- seed symlink guard ------------------------------------------------------
 
 def test_seed_never_writes_through_a_planted_dangling_symlink(sb):
-    # the service user owns DATA_DIR; a compromised editor can plant this and
-    # wait for a root-run configure. `-e` alone is false for a dangling link.
+    # `-e` alone is false for a dangling link — cp would write through it as root
     sb.data.mkdir(parents=True)
     target = sb.root / "etc/pwned"
     (sb.data / "flows.json").symlink_to(target)
@@ -365,8 +351,7 @@ SS_1880 = "LISTEN 0 511   127.0.0.1:1880   0.0.0.0:*"
 
 
 def test_foreign_1880_listener_skips_gate_instead_of_exposing_it(sb):
-    # our unit is stopped (rc=3) yet something holds 1880: a manually installed
-    # Node-RED — the gate must NOT proxy :21880 to that foreign instance.
+    # unit stopped (rc=3) yet 1880 is held — a foreign Node-RED
     res = sb.run(ss_output=SS_1880, unit_active_rc=3)
     assert res.returncode == 0, res.stderr
     assert not sb.gate.exists()
@@ -375,7 +360,6 @@ def test_foreign_1880_listener_skips_gate_instead_of_exposing_it(sb):
 
 
 def test_own_active_service_on_1880_is_not_a_conflict(sb):
-    # unit active (rc=0): the 1880 listener is ours, the gate goes in normally
     res = sb.run(ss_output=SS_1880, unit_active_rc=0)
     assert res.returncode == 0, res.stderr
     assert sb.gate.exists()
@@ -385,12 +369,10 @@ def test_own_active_service_on_1880_is_not_a_conflict(sb):
 # --- dpkg trigger: homeui changing under us ----------------------------------
 
 def test_trigger_wires_gate_after_homeui_upgrade(sb):
-    # install-time state: homeui too old -> no gate, no menu
     res = sb.run(homeui_ver=HOMEUI_OLD)
     assert res.returncode == 0, res.stderr
     assert not sb.gate.exists()
-    # homeui gets upgraded later; dpkg fires our trigger — gate + menu appear
-    # without a reinstall, and the runtime/service are not touched.
+    # homeui upgraded later -> the trigger wires the gate without a reinstall
     sb.log.write_text("")
     res = sb.run(action="triggered")
     assert res.returncode == 0, res.stderr
@@ -401,12 +383,10 @@ def test_trigger_wires_gate_after_homeui_upgrade(sb):
 
 
 def test_trigger_tears_gate_down_when_homeui_is_removed(sb):
-    # a fully wired install...
     res = sb.run()
     assert res.returncode == 0, res.stderr
     assert sb.gate.exists() and sb.menu.exists()
-    # ...then homeui is removed: its snippets vanish and OUR gate's includes
-    # would break nginx at the next restart — the trigger must tear it down.
+    # homeui removed -> a leftover gate would break nginx on a dangling include
     sb.log.write_text("")
     res = sb.run(action="triggered", homeui_ver=None)
     assert res.returncode == 0, res.stderr
@@ -424,7 +404,6 @@ def test_trigger_never_touches_the_runtime(sb):
 
 
 def test_reconfigure_after_homeui_downgrade_cleans_up_the_gate(sb):
-    # same idempotence through the configure path (dpkg-reconfigure)
     res = sb.run()
     assert sb.gate.exists() and sb.menu.exists()
     res = sb.run(homeui_ver=HOMEUI_OLD)

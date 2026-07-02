@@ -1,16 +1,9 @@
 #!/bin/sh
-# wb-node-red postinst: create the service user, place the runtime tree and the
-# user layer under /mnt/data (the partition that survives a firmware reflash),
-# and wire the nginx auth-gate. Also runs as a dpkg trigger (see
-# debian/wb-node-red.triggers): when homeui's side of the contract changes —
-# its service-gate snippets appear or disappear — only the gate/menu wiring
-# re-runs, so a later homeui upgrade activates the gate without a reinstall
-# and a homeui removal takes our gate down with it instead of breaking nginx.
+# Create the service user, place the runtime tree and user data under /mnt/data,
+# and wire the nginx auth-gate; also runs as a dpkg trigger on homeui changes.
 set -e
 
-# Test seam: the behavior tests (tests/test_postinst_behavior.py) re-root every
-# absolute path via this prefix and stub the system commands on PATH. Empty in
-# production, so every path below resolves to its real location.
+# Test seam: the behavior tests re-root all paths and stub commands on PATH.
 ROOT="${WB_NODE_RED_ROOT:-}"
 
 SVC_USER="wb-node-red"
@@ -21,8 +14,8 @@ SEED_FLOWS="$ROOT/usr/share/wb-node-red/flows.json"
 NGINX_GATE_SRC="$ROOT/usr/share/wb-node-red/nginx/wb-node-red.conf"
 NGINX_CONFD="$ROOT/etc/nginx/conf.d"
 NGINX_GATE_DST="$NGINX_CONFD/wb-node-red.conf"
-# Auth-check cache zone (http-context). Must be loaded before the gate that
-# references it; both live in conf.d and `wb-node-red-auth-cache.conf` sorts first.
+# The cache zone must load before the gate that references it: both live in
+# conf.d and the cache conf sorts first.
 NGINX_CACHE_SRC="$ROOT/usr/share/wb-node-red/nginx/wb-node-red-auth-cache.conf"
 NGINX_CACHE_DST="$NGINX_CONFD/wb-node-red-auth-cache.conf"
 NGINX_REDIR_SRC="$ROOT/usr/share/wb-node-red/nginx/wb-node-red-redirect.conf"
@@ -33,8 +26,7 @@ SSLIP_KEY="$ROOT/etc/ssl/sslip.key"
 HOMEUI_MENU_SRC="$ROOT/usr/share/wb-node-red/custom-menu.json"
 HOMEUI_MENU_DIR="$ROOT/usr/share/wb-mqtt-homeui/custom-menu"
 HOMEUI_MENU_DST="$HOMEUI_MENU_DIR/wb-node-red.json"
-# The service-gate snippets AND the isExternal/openInNewTab menu rendering both
-# ship in homeui 2.235.4 — one gate version for everything homeui-related.
+# gate snippets + isExternal menu rendering both ship in homeui 2.235.4
 HOMEUI_MIN="2.235.4~"
 
 reload_nginx_if_valid() {
@@ -43,8 +35,7 @@ reload_nginx_if_valid() {
     fi
 }
 
-# Take the gate down (skip branches, homeui gone). Reloads nginx only when
-# something was actually removed, so the no-op path stays a no-op.
+# Tear the gate down; reload only if something was actually removed.
 remove_gate_files_and_reload() {
     removed=0
     for f in "$NGINX_GATE_DST" "$NGINX_CACHE_DST" "$NGINX_REDIR_DST"; do
@@ -58,12 +49,8 @@ remove_gate_files_and_reload() {
     fi
 }
 
-# True when something OTHER than our (stopped/failed) service holds 1880.
-# The controllers this package targets are exactly the ones where a manually
-# installed Node-RED may already listen on the default port: exposing that
-# foreign instance on :21880 behind the gate would silently "work" against
-# the wrong runtime, so the gate is skipped instead. While our own unit is
-# active, the listener is ours and this returns false.
+# A 1880 listener while our own unit is inactive = a foreign (manually
+# installed) Node-RED; the gate must not expose it on :21880.
 port_1880_foreign() {
     command -v ss >/dev/null 2>&1 || return 1
     if systemctl is-active --quiet wb-node-red.service 2>/dev/null; then
@@ -72,10 +59,8 @@ port_1880_foreign() {
     ss -Hltn 2>/dev/null | grep -q ':1880 '
 }
 
-# nginx port-gate (conf.d) + /node-red redirect (default.wb.d) + homeui menu
-# entry. Runs on configure AND on the dpkg trigger, so it must be idempotent in
-# both directions: wire everything up when the preconditions hold, tear it down
-# when they stopped holding (homeui removed/downgraded since the last run).
+# Idempotent in both directions: wire the gate/menu up when the preconditions
+# hold, tear them down when they stopped holding.
 wire_gate_and_menu() {
     homeui_ver="$(dpkg-query -W -f='${Version}' wb-mqtt-homeui 2>/dev/null || true)"
     homeui_ok=0
@@ -93,18 +78,15 @@ wire_gate_and_menu() {
         echo "wb-node-red: something else already listens on port 1880 (a manually installed Node-RED?) — skipping the Node-RED port-gate rather than exposing that foreign instance on :21880. Stop it and run 'dpkg-reconfigure wb-node-red'." >&2
         remove_gate_files_and_reload
     elif [ -d "$NGINX_CONFD" ] && [ -f "$NGINX_GATE_SRC" ]; then
-        # Keep a copy of whatever is currently installed (a working gate from
-        # the previous version, on upgrade) so a failed nginx -t puts it back
-        # instead of deleting it — nginx -t validates the WHOLE config, so it
-        # can fail for reasons unrelated to these files.
+        # nginx -t checks the WHOLE config, so on failure restore the current
+        # (working) files instead of deleting them.
         nginx_backup="$(mktemp -d)"
         for f in "$NGINX_CACHE_DST" "$NGINX_GATE_DST" "$NGINX_REDIR_DST"; do
             if [ -f "$f" ]; then
                 cp -p "$f" "$nginx_backup/$(basename "$f")"
             fi
         done
-        # Cache zone first (the gate references it), then the gate, then the
-        # /node-red redirect into the homeui block.
+        # cache zone first — the gate references it
         if [ -f "$NGINX_CACHE_SRC" ]; then
             cp "$NGINX_CACHE_SRC" "$NGINX_CACHE_DST"
         fi
@@ -129,14 +111,8 @@ wire_gate_and_menu() {
         rm -rf "$nginx_backup"
     fi
 
-    # homeui "Node-RED" menu entry (Integrations). Two conditions, both
-    # required: homeui must be new enough to render isExternal/openInNewTab
-    # (on anything older the entry dead-ends inside the SPA), AND the gate
-    # must actually be installed (a menu entry with no gate behind it is a
-    # dead link for every admin). The gate file's presence is the signal —
-    # it covers the skip branches above AND the nginx -t restore path (a
-    # restored previous gate still serves /node-red). The else-branch also
-    # cleans up a stale entry when the gate went away since the last run.
+    # Menu only when homeui can render it AND the gate is actually installed —
+    # never a dead "Node-RED" link; a stale entry is cleaned up.
     if [ -d "$HOMEUI_MENU_DIR" ] && [ -f "$HOMEUI_MENU_SRC" ]; then
         if [ "$homeui_ok" = 1 ] && [ -f "$NGINX_GATE_DST" ]; then
             cp "$HOMEUI_MENU_SRC" "$HOMEUI_MENU_DST"
@@ -148,14 +124,12 @@ wire_gate_and_menu() {
 
 case "$1" in
     configure)
-        # Everything we own lives on /mnt/data (runtime code + user data). If it
-        # is not mounted, bail rather than unpack ~120 MB onto the small root.
+        # Everything we own lives on /mnt/data; never unpack onto the small root.
         if ! mountpoint -q "$ROOT/mnt/data"; then
             echo "wb-node-red: /mnt/data is not mounted — aborting (runtime and user data live there)." >&2
             exit 1
         fi
 
-        # Dedicated unprivileged system user (no login, home = userDir).
         if ! getent passwd "$SVC_USER" >/dev/null 2>&1; then
             adduser --system --group --no-create-home \
                 --home "$DATA_DIR" \
@@ -163,32 +137,18 @@ case "$1" in
                 "$SVC_USER"
         fi
 
-        # Runtime tree: shipped as a tarball under /usr/share, extracted to
-        # /mnt/data (off the tight root), replaced on every upgrade. Stop the service
-        # first so the tree isn't swapped under a live process (dpkg-reconfigure
-        # isn't covered by prerm); dh restarts it at the end.
+        # Replace the runtime on every upgrade. Stop the service first — the
+        # tree must not be swapped under a live process (dpkg-reconfigure is
+        # not covered by prerm).
         if [ -f "$RUNTIME_TARBALL" ]; then
             deb-systemd-invoke stop wb-node-red.service >/dev/null 2>&1 || true
             mkdir -p "$RUNTIME_DIR"
-            # Stage the new tree on the same filesystem, then swap it in with renames.
-            # The live node_modules is removed only AFTER the new tree is fully
-            # extracted, so a failed/interrupted extract (disk full on /mnt/data, a
-            # truncated tarball) leaves the previous working runtime intact instead of
-            # aborting under `set -e` with nothing left to start. The tarball under
-            # /usr/share is the source of truth, so any crash mid-swap self-heals on
-            # the next configure (re-extract, then move into place).
-            #
-            # If anything below fails, `set -e` aborts this script before the
-            # debhelper-generated start at the bottom ever runs — so restart
-            # the service from an EXIT trap (on the still-intact old runtime if
-            # the swap itself failed); a failed configure must not leave the
-            # user's running flows down. The trap stays armed for the rest of
-            # the script: on success it fires after the debhelper snippet has
-            # already started the unit, where a second `start` is a no-op.
-            # (Never write the literal debhelper token in comments here — dh
-            # substitutes EVERY occurrence, splicing its snippet mid-comment
-            # and turning the comment's tail into executed code.)
+            # If anything below fails, set -e skips the #DEBHELPER# start; the
+            # trap restarts the service (on success the extra start is a no-op).
             trap 'deb-systemd-invoke start wb-node-red.service >/dev/null 2>&1 || true' EXIT
+            # Stage on the same filesystem, swap in with renames — a failed
+            # extract leaves the old runtime intact; the tarball under
+            # /usr/share self-heals any crash on the next configure.
             rm -rf "$RUNTIME_DIR/node_modules.staging"
             mkdir -p "$RUNTIME_DIR/node_modules.staging"
             tar -xzf "$RUNTIME_TARBALL" -C "$RUNTIME_DIR/node_modules.staging"
@@ -197,18 +157,12 @@ case "$1" in
                 mv "$RUNTIME_DIR/node_modules" "$RUNTIME_DIR/node_modules.old"
             mv "$RUNTIME_DIR/node_modules.staging/node_modules" "$RUNTIME_DIR/node_modules"
             rm -rf "$RUNTIME_DIR/node_modules.old" "$RUNTIME_DIR/node_modules.staging"
-            # The swap is two renames; on ext4 they are only journal-durable
-            # after a commit. Flush now so a power cut right after the upgrade
-            # can't land in the no-runtime intermediate state.
+            # make the renames durable before power can cut
             sync
         fi
 
-        # User layer: created and seeded if-absent, never overwritten on upgrade.
-        # The -L guard matters: DATA_DIR is writable to the service user (the
-        # account an editor compromise runs as), `-e` is false for a DANGLING
-        # symlink, and cp writes through the link as root — so a planted
-        # `flows.json -> /etc/...` would become a root-owned write at an
-        # attacker-chosen path. Never seed through any symlink.
+        # Seed if absent, never overwrite — and never through a symlink: the
+        # userDir is service-user-writable, a root cp would write through it.
         mkdir -p "$DATA_DIR"
         if [ ! -e "$DATA_DIR/flows.json" ] && [ ! -L "$DATA_DIR/flows.json" ] \
             && [ -f "$SEED_FLOWS" ]; then
@@ -220,9 +174,7 @@ case "$1" in
         ;;
 
     triggered)
-        # Fired by dpkg when /etc/nginx/snippets or homeui's share tree changes
-        # (homeui installed, upgraded, or removed) — re-run ONLY the gate/menu
-        # wiring; the runtime swap and the service are not touched.
+        # homeui changed under us — re-run only the gate/menu wiring.
         wire_gate_and_menu
         ;;
 

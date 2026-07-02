@@ -117,44 +117,32 @@ def test_control_description_mentions_port_gate():
 
 
 def test_postinst_installs_port_gate_with_cert_check_and_rollback():
-    """The gate is placed in conf.d, the redirect in the homeui block; postinst
-    skips when the sslip cert is absent. A failed nginx -t RESTORES the
-    previously-installed files (an upgrade must not lose a working gate) so a
-    bad config never takes homeui down. The behavior itself is driven in
-    tests/test_postinst_behavior.py; here we pin the contract strings."""
+    """Contract strings for the gate install: cert check, homeui version gate,
+    restore-on-failed-nginx -t (behavior driven in test_postinst_behavior.py)."""
     postinst = _read("debian/postinst")
     assert 'NGINX_GATE_DST="$NGINX_CONFD/wb-node-red.conf"' in postinst
     assert 'NGINX_CACHE_DST="$NGINX_CONFD/wb-node-red-auth-cache.conf"' in postinst
     assert 'NGINX_REDIR_DST="$NGINX_WB_D/wb-node-red-redirect.conf"' in postinst
     assert "/etc/ssl/sslip.pem" in postinst
-    # validate; on failure restore the pre-upgrade files (or remove on fresh).
     assert "nginx -t" in postinst
-    assert "nginx_backup" in postinst
-    # the gate includes homeui snippets, so install only on homeui >= 2.235.4.
+    assert "nginx_backup" in postinst  # restore on failure, don't just delete
     assert 'HOMEUI_MIN="2.235.4~"' in postinst
 
 
 # --- dpkg trigger: react to homeui appearing/leaving -------------------------
 
 def test_dpkg_trigger_rewires_gate_on_homeui_changes():
-    """Without a trigger the gate check is a one-shot at OUR configure time: a
-    homeui upgraded later leaves Node-RED running but unreachable, and a homeui
-    removed later leaves a gate whose includes break nginx at the next restart.
-    The trigger closes both directions (behavior driven in
-    tests/test_postinst_behavior.py)."""
+    """The homeui check must not be a one-shot: the trigger re-wires the gate
+    after a homeui upgrade and tears it down after a homeui removal."""
     triggers = _read("debian/wb-node-red.triggers")
     assert "interest-noawait /etc/nginx/snippets" in triggers
     assert "interest-noawait /usr/share/wb-mqtt-homeui" in triggers
     postinst = _read("debian/postinst")
     assert "triggered)" in postinst
-    # the triggered path must re-run ONLY the gate/menu wiring — never the
-    # runtime swap or the service stop/start.
-    assert "wire_gate_and_menu" in postinst
+    assert "wire_gate_and_menu" in postinst  # gate/menu wiring only, no swap
 
 
 def test_maintainer_scripts_have_valid_sh_syntax():
-    """A shell syntax error in postinst bricks the install path; `sh -n` is the
-    zero-dependency floor (shellcheck is the documented deeper pass)."""
     for script in ("debian/postinst", "debian/postrm"):
         subprocess.run(["sh", "-n", str(ROOT / script)], check=True)
 
@@ -185,9 +173,7 @@ def test_postinst_guards_mount_and_never_clobbers_user_flows():
     assert 'mountpoint -q "$ROOT/mnt/data"' in postinst
     # seed flows only if absent — an upgrade must not overwrite the user's flows.
     assert '[ ! -e "$DATA_DIR/flows.json" ]' in postinst
-    # ... and never seed THROUGH a symlink: the userDir belongs to the service
-    # user (the account an editor RCE runs as), `-e` is false for a dangling
-    # link, and a root cp would write through a planted one.
+    # and never through a planted symlink (root cp would write through it)
     assert '[ ! -L "$DATA_DIR/flows.json" ]' in postinst
 
 

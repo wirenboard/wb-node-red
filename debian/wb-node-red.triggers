@@ -1,9 +1,4 @@
-# Re-wire (or tear down) the nginx gate + homeui menu whenever homeui's side of
-# the contract changes: its service-gate snippets appear/disappear in
-# /etc/nginx/snippets or its share tree changes (install, upgrade, removal).
-# Without this the gate check is a one-shot at OUR configure time — a homeui
-# upgraded later would leave Node-RED running but unreachable, and a homeui
-# removed later would leave a gate whose includes break nginx at the next
-# restart. noawait: homeui does not need to wait for our trigger processing.
+# Re-wire (or tear down) the gate + menu when homeui's snippets or share tree
+# change — the homeui check must not be a one-shot at our own configure time.
 interest-noawait /etc/nginx/snippets
 interest-noawait /usr/share/wb-mqtt-homeui
