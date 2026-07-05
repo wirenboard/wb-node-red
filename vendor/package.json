@@ -1,0 +1,11 @@
+{
+  "name": "wb-node-red-vendor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vendored Node-RED runtime + Wiren Board palette, packed into the wb-node-red .deb at build time",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "node-red": "5.0.0",
+    "node-red-contrib-wirenboard": "3.11.0"
+  }
+}

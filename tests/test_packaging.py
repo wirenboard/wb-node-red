@@ -110,6 +110,22 @@ def test_rules_emits_cyclonedx_sbom():
     assert "cyclonedx" in rules.lower()
 
 
+def test_install_ships_sbom():
+    """The vendor layer, which builds the SBOM, declares it for installation."""
+    install = _read("debian/wb-node-red.install")
+    assert "sbom.cdx.json" in install
+    assert "usr/share/wb-node-red" in install
+
+
 def test_control_description_mentions_port_gate():
     # apt show should describe the dedicated-port access model.
     assert "21880" in _read("debian/control")
+
+
+# --- vendoring --------------------------------------------------------------
+
+def test_vendor_pins_node_red_and_wb_palette():
+    pkg = json.loads(_read("vendor/package.json"))
+    deps = pkg.get("dependencies", {})
+    assert "node-red" in deps
+    assert "node-red-contrib-wirenboard" in deps

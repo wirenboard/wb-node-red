@@ -1,1 +1,2 @@
-52wb-node-red etc/apt/apt.conf.d
+52wb-node-red        etc/apt/apt.conf.d
+vendor/sbom.cdx.json usr/share/wb-node-red
