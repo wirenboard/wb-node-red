@@ -30,5 +30,6 @@ Description: Node-RED for Wiren Board controllers (native)
  The service runs as a dedicated unprivileged user with the editor bound to
  loopback and reverse-proxied on a dedicated HTTPS port (21880) behind the homeui
  login (admin only); the old /node-red/ path is kept as a redirect to that port.
- User data and the runtime tree persist under /mnt/data across upgrades and
- updates are explicit (the package is excluded from unattended-upgrades).
+ User data persists across upgrades; both it and the runtime tree live under
+ /mnt/data (surviving a firmware re-flash). Updates are explicit (the package
+ is excluded from unattended-upgrades).
