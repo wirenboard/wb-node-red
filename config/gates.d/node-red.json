@@ -1,8 +1,11 @@
 {
   "internalPort": 1880,
+  "externalPort": 21880,
   "role": "admin",
-  "title": {
-    "ru": "Node-RED",
-    "en": "Node-RED"
+  "menu": {
+    "title": {
+      "ru": "Node-RED",
+      "en": "Node-RED"
+    }
   }
 }

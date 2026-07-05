@@ -236,13 +236,14 @@ def test_flow_points_at_local_broker_and_device_tree():
 
 def test_gate_declared_as_homeui_gates_d_json():
     """The gate is one JSON consumed by homeui's gates.d mechanism — internal
-    port 1880 (homeui derives external 21880), admin role, titled for the menu."""
+    port 1880, external 21880, admin role, menu.title for the Integrations item.
+    homeui requires externalPort explicitly and nests the title under `menu`."""
     gate = json.loads(_read("config/gates.d/node-red.json"))
     assert gate["internalPort"] == 1880
+    assert gate["externalPort"] == 21880
     assert gate["role"] == "admin"
-    assert gate.get("title", {}).get("ru") and gate["title"].get("en")
-    # no externalPort: homeui derives 20000 + 1880 = 21880 deterministically.
-    assert "externalPort" not in gate
+    title = gate.get("menu", {}).get("title", {})
+    assert title.get("ru") and title.get("en")
 
 
 def test_gate_json_shipped_to_homeui_gates_dir():

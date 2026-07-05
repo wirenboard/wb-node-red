@@ -53,7 +53,7 @@ TLS-сертификат отдельно готовить не нужно: home
 | Ваши переопределения настроек | `/mnt/data/wb-node-red/settings-user.js` (опционально, переживает обновления; мержится поверх шаблона — loopback-bind и `userDir` остаются закреплёнными) |
 | Ваши flows / учётки / ноды | `/mnt/data/wb-node-red/` (заполняется, если пусто; сохраняется) |
 | Сервис | `wb-node-red.service` → `node red.js`, пользователь `wb-node-red`, редактор на `127.0.0.1:1880` (httpAdminRoot `/`) |
-| Гейт | `/etc/wb-homeui/gates.d/node-red.json` — декларация (`internalPort 1880`, `role admin`, `title`), которую homeui рендерит в server-блок nginx; внешний порт выводится как `20000 + 1880 = 21880` |
+| Гейт | `/etc/wb-homeui/gates.d/node-red.json` — декларация (`internalPort 1880`, `externalPort 21880`, `role admin`, `menu.title`), которую homeui рендерит в server-блок nginx на порту 21880 |
 | Публичный доступ | `https://<homeui-host>:21880/` — admin-гейт homeui → `127.0.0.1:1880`; старый `/node-red/` 302-редиректит на `/open-node-red` |
 | MQTT | дефолтный flow → `127.0.0.1:1883` |
 | Меню homeui | «Node-RED» в разделе **Интеграции** — homeui генерирует пункт из `title` гейта (отдельный drop-in меню не нужен) |
