@@ -1,0 +1,8 @@
+{
+  "internalPort": 1880,
+  "role": "admin",
+  "title": {
+    "ru": "Node-RED",
+    "en": "Node-RED"
+  }
+}

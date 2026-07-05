@@ -1,0 +1,31 @@
+#!/bin/sh
+# Remove the gate declaration and the runtime tree on remove/purge; remove the
+# service user on purge. User data under /mnt/data/wb-node-red is intentionally kept.
+set -e
+
+SVC_USER="wb-node-red"
+RUNTIME_DIR="/mnt/data/wb-node-red-runtime"
+GATE_JSON="/etc/wb-homeui/gates.d/node-red.json"
+
+case "$1" in
+    remove|purge)
+        rm -f "$GATE_JSON"
+        # re-render the remaining gates (drops ours + reloads nginx); harmless if absent
+        command -v wb-homeui-gates >/dev/null 2>&1 && wb-homeui-gates apply >/dev/null 2>&1 || true
+        # Runtime code is package-owned (extracted, dpkg-untracked) — remove it.
+        # The user data dir is never touched here.
+        rm -rf "$RUNTIME_DIR"
+        ;;
+esac
+
+case "$1" in
+    purge)
+        if getent passwd "$SVC_USER" >/dev/null 2>&1; then
+            deluser --system "$SVC_USER" >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
