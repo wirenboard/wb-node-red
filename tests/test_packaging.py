@@ -41,6 +41,17 @@ def test_control_is_arch_all():
     assert "Architecture: all" in _read("debian/control")
 
 
+# --- service user -----------------------------------------------------------
+
+def test_service_user_is_declared_via_sysusers():
+    sysusers = _read("debian/wb-node-red.sysusers")
+    assert re.search(r"^u wb-node-red\b", sysusers, re.MULTILINE)
+    assert "/mnt/data/wb-node-red" in sysusers
+    # the user comes from systemd-sysusers, not a manual adduser call
+    assert "adduser" not in _read("debian/control")
+    assert "adduser" not in _read("debian/postinst")
+
+
 # --- systemd unit -----------------------------------------------------------
 
 def test_service_runs_node_red_as_dedicated_user():
@@ -164,7 +175,8 @@ def test_postrm_removes_runtime_and_gate_but_preserves_user_data():
     postrm = _read("debian/postrm")
     assert "/mnt/data/wb-node-red-runtime" in postrm
     assert 'rm -rf "$RUNTIME_DIR"' in postrm
-    assert "deluser --system" in postrm
+    # sysusers convention: the user stays (it may still own files on /mnt/data)
+    assert "deluser" not in postrm
     # the gate declaration is dropped and the remaining gates re-rendered
     assert "/etc/wb-homeui/gates.d/node-red.json" in postrm
     assert "wb-homeui-gates apply" in postrm

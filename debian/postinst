@@ -26,12 +26,9 @@ case "$1" in
             exit 1
         fi
 
-        if ! getent passwd "$SVC_USER" >/dev/null 2>&1; then
-            adduser --system --group --no-create-home \
-                --home "$DATA_DIR" \
-                --gecos "Wiren Board Node-RED" \
-                "$SVC_USER"
-        fi
+        # The dh_installsysusers snippet runs at the debhelper token below —
+        # too late for the chown; create the user from sysusers.d now.
+        systemd-sysusers
 
         # Replace the runtime on every upgrade. Stop the service first — the tree
         # must not be swapped under a live process (dpkg-reconfigure has no prerm).

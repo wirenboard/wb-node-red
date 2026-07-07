@@ -15,8 +15,7 @@ POSTINST = REPO / "debian" / "postinst"
 # STUB_* env knobs let each test drive a branch without editing the stubs
 SHELL_STUBS = {
     "mountpoint": '#!/bin/sh\nexit "${STUB_MOUNTPOINT_RC:-0}"\n',
-    "getent": "#!/bin/sh\nexit 0\n",  # service user "already exists"
-    "adduser": "#!/bin/sh\nexit 0\n",
+    "systemd-sysusers": '#!/bin/sh\necho "systemd-sysusers $*" >> "$STUB_LOG"\nexit 0\n',
     "chown": "#!/bin/sh\nexit 0\n",  # the sandbox has no wb-node-red user
     "deb-systemd-invoke": '#!/bin/sh\necho "deb-systemd-invoke $*" >> "$STUB_LOG"\nexit 0\n',
     "wb-homeui-gates": '#!/bin/sh\necho "wb-homeui-gates $*" >> "$STUB_LOG"\nexit 0\n',
@@ -106,6 +105,9 @@ def test_fresh_install_extracts_runtime_seeds_flows_and_applies_gate(sb):
     assert (sb.data / "flows.json").read_text() == (
         sb.share / "flows.json").read_text()
     assert "wb-homeui-gates apply" in sb.log_text()
+    # the service user must exist before the chown; postinst can't wait for
+    # the debhelper-generated systemd-sysusers call at the end of the script
+    assert "systemd-sysusers" in sb.log_text()
 
 
 def test_upgrade_replaces_runtime_and_preserves_user_flows(sb):
