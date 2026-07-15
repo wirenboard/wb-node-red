@@ -14,8 +14,7 @@ Rules-Requires-Root: no
 Package: wb-node-red
 Architecture: all
 Depends: ${misc:Depends},
- nodejs (>= 22.9),
- adduser
+ nodejs (>= 22.9)
 Recommends: nginx, mosquitto, wb-mqtt-homeui (>= 2.235.4)
 Description: Node-RED for Wiren Board controllers (native)
  Runs Node-RED natively on the controller host as a systemd service, with the

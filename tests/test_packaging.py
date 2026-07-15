@@ -47,6 +47,16 @@ def test_control_is_arch_all():
     assert "Architecture: all" in _read("debian/control")
 
 
+# --- service user -----------------------------------------------------------
+
+def test_service_user_is_declared_via_sysusers():
+    sysusers = _read("debian/wb-node-red.sysusers")
+    assert re.search(r"^u wb-node-red\b", sysusers, re.MULTILINE)
+    assert "/mnt/data/wb-node-red" in sysusers
+    # the user comes from systemd-sysusers, not a manual adduser call
+    assert "adduser" not in _read("debian/control")
+
+
 # --- systemd unit -----------------------------------------------------------
 
 def test_service_runs_node_red_as_dedicated_user():
