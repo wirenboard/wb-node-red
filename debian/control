@@ -17,11 +17,11 @@ Depends: ${misc:Depends},
  nodejs (>= 22.9)
 Recommends: nginx, mosquitto, wb-mqtt-homeui (>= 2.235.4)
 Description: Node-RED for Wiren Board controllers (native)
- Runs Node-RED natively on the controller host as a systemd service, with the
- Wiren Board palette (node-red-contrib-wirenboard) and a default flow pre-wired
- to the local MQTT broker on localhost:1883 and the device tree (/devices/#).
+ Runs Node-RED natively on the controller host as a systemd service, with a
+ default flow pre-wired to the local MQTT broker on localhost:1883 and the
+ device tree (/devices/#).
  .
- Node-RED and the palette are vendored into the package at build time, so no
+ Node-RED is vendored into the package at build time, so no
  npm download or native compilation happens on the controller; Node.js comes
  from the distribution (Depends: nodejs) so its security updates flow from the
  Wiren Board / Debian repository.

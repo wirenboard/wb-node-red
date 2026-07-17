@@ -1,5 +1,5 @@
 #!/usr/bin/make -f
-# Vendor node-red + the WB palette via npm. The runtime ships as a tarball;
+# Vendor node-red via npm. The runtime ships as a tarball;
 # postinst extracts it to /mnt/data.
 export DH_VERBOSE = 1
 
