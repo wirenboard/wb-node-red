@@ -52,6 +52,13 @@ def test_service_user_is_declared_via_sysusers():
     assert "adduser" not in _read("debian/postinst")
 
 
+def test_rules_ships_sysusers_conf_explicitly():
+    # the CI chroot's debhelper lacks dh_installsysusers — rules must install it
+    rules = _read("debian/rules")
+    assert "usr/lib/sysusers.d/wb-node-red.conf" in rules
+    assert "debian/wb-node-red.sysusers" in rules
+
+
 # --- systemd unit -----------------------------------------------------------
 
 def test_service_runs_node_red_as_dedicated_user():
