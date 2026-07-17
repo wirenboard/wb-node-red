@@ -24,6 +24,9 @@ override_dh_auto_install:
 	install -d $(SHAREDIR)
 	tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
 		-czf $(SHAREDIR)/node_modules.tar.gz -C vendor node_modules
+	# explicit: the CI build chroot's debhelper predates dh_installsysusers
+	install -D -m 0644 debian/wb-node-red.sysusers \
+		debian/wb-node-red/usr/lib/sysusers.d/wb-node-red.conf
 
 override_dh_installsystemd:
 	# Stop before the upgrade swap, start after — avoids an editor-port collision.
