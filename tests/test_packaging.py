@@ -134,8 +134,10 @@ def test_control_description_mentions_port_gate():
 
 # --- vendoring --------------------------------------------------------------
 
-def test_vendor_pins_node_red_and_wb_palette():
+def test_vendor_pins_node_red_without_community_palette():
     pkg = json.loads(_read("vendor/package.json"))
     deps = pkg.get("dependencies", {})
     assert "node-red" in deps
-    assert "node-red-contrib-wirenboard" in deps
+    # the community palette is not shipped; users install it via Palette Manager
+    assert "node-red-contrib-wirenboard" not in deps
+    assert "node-red-contrib-wirenboard" not in _read("vendor/package-lock.json")
