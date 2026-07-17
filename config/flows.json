@@ -16,6 +16,16 @@
         "label": "Wiren Board"
     },
     {
+        "id": "wb-topics-note",
+        "type": "comment",
+        "z": "wb-flow-tab",
+        "name": "Топики Wiren Board: чтение и запись",
+        "info": "**Чтение** — подписка на `/devices/#` (всё) или `/devices/<устройство>/controls/<контрол>` (одно значение).\n\n**Запись** — публикация в сабтопик **`/on`**: `/devices/<устройство>/controls/<контрол>/on`. Значение — строка (для переключателей `\"1\"`/`\"0\"`), **без retain**. В сам топик контрола пишет только драйвер устройства — команды идут через `/on`.\n\nПример ниже — зуммер контроллера: `/devices/buzzer/controls/enabled/on`.",
+        "x": 200,
+        "y": 40,
+        "wires": []
+    },
+    {
         "id": "wb-devices-in",
         "type": "mqtt in",
         "z": "wb-flow-tab",
@@ -38,6 +48,47 @@
         "complete": "payload",
         "x": 420,
         "y": 120,
+        "wires": []
+    },
+    {
+        "id": "wb-buzzer-on",
+        "type": "inject",
+        "z": "wb-flow-tab",
+        "name": "Зуммер: вкл",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "once": false,
+        "payload": "1",
+        "payloadType": "str",
+        "x": 170,
+        "y": 200,
+        "wires": [["wb-buzzer-out"]]
+    },
+    {
+        "id": "wb-buzzer-off",
+        "type": "inject",
+        "z": "wb-flow-tab",
+        "name": "Зуммер: выкл",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "once": false,
+        "payload": "0",
+        "payloadType": "str",
+        "x": 170,
+        "y": 260,
+        "wires": [["wb-buzzer-out"]]
+    },
+    {
+        "id": "wb-buzzer-out",
+        "type": "mqtt out",
+        "z": "wb-flow-tab",
+        "name": "buzzer enabled",
+        "topic": "/devices/buzzer/controls/enabled/on",
+        "qos": "1",
+        "retain": "false",
+        "broker": "wb-mqtt-broker",
+        "x": 440,
+        "y": 230,
         "wires": []
     }
 ]

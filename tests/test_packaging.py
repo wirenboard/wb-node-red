@@ -253,6 +253,23 @@ def test_flow_points_at_local_broker_and_device_tree():
     assert all(n["broker"] == brokers[0]["id"] for n in topics_nodes)
 
 
+def test_flow_demonstrates_the_on_subtopic_write():
+    """The write example: inject → mqtt out to the buzzer's /on subtopic."""
+    flows = json.loads(_read("config/flows.json"))
+    broker_id = next(n["id"] for n in flows if n.get("type") == "mqtt-broker")
+    out = next(n for n in flows if n.get("type") == "mqtt out")
+    assert out["topic"] == "/devices/buzzer/controls/enabled/on"
+    assert out["broker"] == broker_id
+    # WB commands are never retained
+    assert out["retain"] == "false"
+    injects = [n for n in flows if n.get("type") == "inject"]
+    assert {n.get("payload") for n in injects} >= {"1", "0"}
+    assert all(out["id"] in wires for n in injects for wires in n["wires"])
+    # the /on convention is non-obvious — the flow must carry the explainer
+    comments = [n for n in flows if n.get("type") == "comment"]
+    assert any("/on" in n.get("info", "") for n in comments)
+
+
 # --- homeui service gate (declarative gates.d) ------------------------------
 
 def test_gate_declared_as_homeui_gates_d_json():
