@@ -1,0 +1,94 @@
+[
+    {
+        "id": "wb-mqtt-broker",
+        "type": "mqtt-broker",
+        "name": "Wiren Board (local)",
+        "broker": "127.0.0.1",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "keepalive": "60",
+        "cleansession": true
+    },
+    {
+        "id": "wb-flow-tab",
+        "type": "tab",
+        "label": "Wiren Board"
+    },
+    {
+        "id": "wb-topics-note",
+        "type": "comment",
+        "z": "wb-flow-tab",
+        "name": "Топики Wiren Board: чтение и запись",
+        "info": "**Чтение** — подписка на `/devices/#` (всё) или `/devices/<устройство>/controls/<контрол>` (одно значение).\n\n**Запись** — публикация нового значения в сабтопик **`/on`**: `/devices/<устройство>/controls/<контрол>/on`, **без retain**. Так меняется любой доступный на запись контрол любого устройства. Значение — строка в формате контрола: `\"1\"`/`\"0\"` для переключателей, число для диммеров и уставок (например `\"42.5\"`), текст для текстовых. В сам топик контрола пишет только драйвер — там появится применённое значение.\n\nПример ниже — переключатель `enabled` зуммера контроллера: `/devices/buzzer/controls/enabled/on`, `\"1\"` включает, `\"0\"` выключает.",
+        "x": 200,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "wb-devices-in",
+        "type": "mqtt in",
+        "z": "wb-flow-tab",
+        "name": "WB devices",
+        "topic": "/devices/#",
+        "qos": "0",
+        "datatype": "auto-detect",
+        "broker": "wb-mqtt-broker",
+        "x": 170,
+        "y": 120,
+        "wires": [["wb-debug"]]
+    },
+    {
+        "id": "wb-debug",
+        "type": "debug",
+        "z": "wb-flow-tab",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "complete": "payload",
+        "x": 420,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "wb-buzzer-on",
+        "type": "inject",
+        "z": "wb-flow-tab",
+        "name": "Зуммер: вкл",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "once": false,
+        "payload": "1",
+        "payloadType": "str",
+        "x": 170,
+        "y": 200,
+        "wires": [["wb-buzzer-out"]]
+    },
+    {
+        "id": "wb-buzzer-off",
+        "type": "inject",
+        "z": "wb-flow-tab",
+        "name": "Зуммер: выкл",
+        "props": [{"p": "payload"}],
+        "repeat": "",
+        "once": false,
+        "payload": "0",
+        "payloadType": "str",
+        "x": 170,
+        "y": 260,
+        "wires": [["wb-buzzer-out"]]
+    },
+    {
+        "id": "wb-buzzer-out",
+        "type": "mqtt out",
+        "z": "wb-flow-tab",
+        "name": "buzzer enabled",
+        "topic": "/devices/buzzer/controls/enabled/on",
+        "qos": "1",
+        "retain": "false",
+        "broker": "wb-mqtt-broker",
+        "x": 440,
+        "y": 230,
+        "wires": []
+    }
+]
