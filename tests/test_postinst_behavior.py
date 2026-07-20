@@ -188,71 +188,28 @@ def test_free_port_and_inactive_service_pass_the_guard(sb):
     assert res.returncode == 0, res.stderr
 
 
-# --- migration from old installs ---------------------------------------------
+# --- old-install hint ----------------------------------------------------------
 
-def _old_install(sb, rel, flow_name="flows.json", cred=True, secret=True):
-    d = sb.root / rel
-    d.mkdir(parents=True)
-    (d / flow_name).write_text("OLD FLOWS")
-    if cred:
-        (d / f"{flow_name[:-5]}_cred.json").write_text("OLD CREDS")
-    if secret:
-        (d / ".config.runtime.json").write_text("OLD SECRET")
-    return d
-
-
-def test_first_install_migrates_manual_flows_creds_and_secret(sb):
-    old = _old_install(sb, "root/.node-red")
+def test_first_install_hints_at_old_data_but_never_adopts_it(sb):
+    old = sb.root / "root/.node-red"
+    old.mkdir(parents=True)
+    (old / "flows.json").write_text("OLD FLOWS")
     res = sb.run()
     assert res.returncode == 0, res.stderr
-    assert (sb.data / "flows.json").read_text() == "OLD FLOWS"
-    assert (sb.data / "flows_cred.json").read_text() == "OLD CREDS"
-    assert (sb.data / ".config.runtime.json").read_text() == "OLD SECRET"
-    assert (old / "flows.json").exists(), "migration must copy, not move"
-
-
-def test_migration_renames_legacy_hostname_flow_files(sb):
-    _old_install(sb, "root/.node-red", flow_name="flows_wirenboard-AWQ.json")
-    res = sb.run()
-    assert res.returncode == 0, res.stderr
-    assert (sb.data / "flows.json").read_text() == "OLD FLOWS"
-    assert (sb.data / "flows_cred.json").read_text() == "OLD CREDS"
-
-
-def test_docker_volume_is_migrated(sb):
-    _old_install(sb, "mnt/data/root/nodered")
-    res = sb.run()
-    assert res.returncode == 0, res.stderr
-    assert (sb.data / "flows.json").read_text() == "OLD FLOWS"
-
-
-def test_flows_in_both_sources_skip_migration_and_seed_default(sb):
-    _old_install(sb, "root/.node-red")
-    _old_install(sb, "mnt/data/root/nodered")
-    res = sb.run()
-    assert res.returncode == 0, res.stderr
+    assert "/root/.node-red" in res.stdout
+    assert "wiki" in res.stdout
     assert (sb.data / "flows.json").read_text() == (
-        sb.share / "flows.json").read_text()
-    assert "not migrating" in res.stdout
+        sb.share / "flows.json").read_text(), "must seed the default, not adopt"
 
 
-def test_ambiguous_legacy_flow_files_skip_migration(sb):
-    d = _old_install(sb, "root/.node-red", flow_name="flows_one.json")
-    (d / "flows_two.json").write_text("OTHER")
-    res = sb.run()
-    assert res.returncode == 0, res.stderr
-    assert (sb.data / "flows.json").read_text() == (
-        sb.share / "flows.json").read_text()
-
-
-def test_existing_userdir_is_never_touched_by_migration(sb):
-    _old_install(sb, "root/.node-red")
+def test_no_hint_once_userdir_is_populated(sb):
+    (sb.root / "mnt/data/root/nodered").mkdir(parents=True)
     sb.data.mkdir(parents=True)
     (sb.data / "flows.json").write_text("MY FLOWS")
     res = sb.run()
     assert res.returncode == 0, res.stderr
+    assert "old Node-RED" not in res.stdout
     assert (sb.data / "flows.json").read_text() == "MY FLOWS"
-    assert not (sb.data / "flows_cred.json").exists()
 
 
 # --- seed symlink guard ------------------------------------------------------

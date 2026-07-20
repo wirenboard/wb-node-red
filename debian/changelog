@@ -2,9 +2,8 @@ wb-node-red (1.0.2) stable; urgency=medium
 
   * Abort installation when a foreign process (a manual or Docker Node-RED)
     already listens on port 1880
-  * Migrate flows, credentials and the credentials key from a previous manual
-    (/root/.node-red) or Docker (/mnt/data/root/nodered) install on first
-    configure — copy only, originals are kept
+  * Hint at the wiki migration guide when data of a previous manual
+    (/root/.node-red) or Docker (/mnt/data/root/nodered) install is found
 
  -- Denis Smagin <denis.smagin@wirenboard.com>  Tue, 21 Jul 2026 10:00:00 +0200
 
