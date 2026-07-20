@@ -1,3 +1,14 @@
+wb-node-red (1.0.1) stable; urgency=medium
+
+  * Raise the wb-mqtt-homeui minimum to 2.241.0 — the release that ships the
+    declarative gates.d mechanism this package consumes (2.235.4 only had the
+    older snippet-based gate).
+  * Trim declarative string-pin tests that duplicate file contents or the
+    postinst behavior suite; executable checks, security pins and
+    regression pins stay.
+
+ -- Denis Smagin <denis.smagin@wirenboard.com>  Sun, 20 Jul 2026 18:30:00 +0200
+
 wb-node-red (1.0.0) stable; urgency=medium
 
   * Initial release: native Node-RED for Wiren Board, installed with

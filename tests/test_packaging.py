@@ -22,37 +22,7 @@ def _read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
-# --- explicit updates -------------------------------------------------------
-
-def test_excluded_from_unattended_upgrades():
-    apt = _read("52wb-node-red")
-    assert "wb-node-red" in apt
-    assert "Package-Blacklist" in apt
-
-
-# --- control ----------------------------------------------------------------
-
-def test_control_depends_on_distro_nodejs():
-    control = _read("debian/control")
-    # in the runtime Depends stanza, not just Build-Depends
-    assert re.search(r"^Depends:(?:.|\n )*\bnodejs\b", control, re.MULTILINE), \
-        "nodejs missing from the runtime Depends field"
-
-
-def test_control_is_arch_all():
-    assert "Architecture: all" in _read("debian/control")
-
-
 # --- service user -----------------------------------------------------------
-
-def test_service_user_is_declared_via_sysusers():
-    sysusers = _read("debian/wb-node-red.sysusers")
-    assert re.search(r"^u wb-node-red\b", sysusers, re.MULTILINE)
-    assert "/mnt/data/wb-node-red" in sysusers
-    # the user comes from systemd-sysusers, not a manual adduser call
-    assert "adduser" not in _read("debian/control")
-    assert "adduser" not in _read("debian/postinst")
-
 
 def test_rules_ships_sysusers_conf_explicitly():
     # the CI chroot's debhelper lacks dh_installsysusers — rules must install it
@@ -62,14 +32,6 @@ def test_rules_ships_sysusers_conf_explicitly():
 
 
 # --- systemd unit -----------------------------------------------------------
-
-def test_service_runs_node_red_as_dedicated_user():
-    unit = _read("debian/wb-node-red.service")
-    assert "/mnt/data/wb-node-red-runtime/node_modules/node-red/red.js" in unit
-    assert "/usr/lib/wb-node-red/settings.js" in unit
-    assert "User=wb-node-red" in unit
-    assert "RequiresMountsFor=/mnt/data" in unit
-
 
 def test_service_is_hardened():
     unit = _read("debian/wb-node-red.service")
@@ -97,14 +59,6 @@ def test_rules_vendors_without_compilation():
     assert re.search(r"npm sbom .*--omit=optional", rules)
 
 
-def test_rules_runs_the_suite_in_dh_auto_test():
-    """The suite runs in every build (dh_auto_test), honoring nocheck."""
-    rules = _read("debian/rules")
-    assert "python3 -m pytest" in rules
-    assert "nocheck" in rules
-    assert "python3-pytest" in _read("debian/control")
-
-
 def test_rules_stops_service_across_the_upgrade_swap():
     """--no-restart-after-upgrade stops the unit before the code swap and starts
     it after, so the new Node-RED never collides with the old one on the port."""
@@ -114,26 +68,12 @@ def test_rules_stops_service_across_the_upgrade_swap():
 
 # --- SBOM (CRA) -------------------------------------------------------------
 
-def test_rules_emits_cyclonedx_sbom():
-    """CRA: the build emits a CycloneDX SBOM of the vendored tree in debian/rules.
-
-    Shipping it via .install is asserted in the vendor layer (where the SBOM
-    and its .install line are introduced)."""
-    rules = _read("debian/rules")
-    assert "npm sbom" in rules
-    assert "cyclonedx" in rules.lower()
-
-
 def test_install_ships_sbom():
-    """The vendor layer, which builds the SBOM, declares it for installation."""
+    """The CRA-mandated SBOM must keep shipping: nothing fails at build time if
+    it silently drops out of .install."""
     install = _read("debian/wb-node-red.install")
     assert "sbom.cdx.json" in install
     assert "usr/share/wb-node-red" in install
-
-
-def test_control_description_mentions_port_gate():
-    # apt show should describe the dedicated-port access model.
-    assert "21880" in _read("debian/control")
 
 
 # --- vendoring --------------------------------------------------------------
@@ -170,16 +110,6 @@ def test_runtime_tree_delivered_to_mnt_data_consistently():
     assert "tar -xzf" in postinst
 
     assert "/mnt/data/wb-node-red-runtime/node_modules/node-red/red.js" in unit
-
-
-def test_postinst_guards_mount_and_never_clobbers_user_flows():
-    postinst = _read("debian/postinst")
-    # never unpack onto the small root if /mnt/data isn't mounted.
-    assert 'mountpoint -q "$ROOT/mnt/data"' in postinst
-    # seed flows only if absent — an upgrade must not overwrite the user's flows.
-    assert '[ ! -e "$DATA_DIR/flows.json" ]' in postinst
-    # and never through a planted symlink (root cp would write through it)
-    assert '[ ! -L "$DATA_DIR/flows.json" ]' in postinst
 
 
 def test_postrm_removes_runtime_and_gate_but_preserves_user_data():
