@@ -1,110 +1,113 @@
 # wb-node-red
 
-Готовый пакет [Node-RED](https://nodered.org/) для контроллеров
-[Wiren Board](https://wirenboard.com/): `apt install wb-node-red` — и Node-RED
-работает как системный сервис за штатным логином контроллера, из коробки
-подключённый к MQTT.
+A ready-made [Node-RED](https://nodered.org/) package for
+[Wiren Board](https://wirenboard.com/) controllers: `apt install wb-node-red`
+and Node-RED runs as a system service behind the controller's standard login,
+wired to MQTT out of the box.
 
-## Зачем это нужно
+## Why this exists
 
-Ручная установка Node-RED (`npm install -g node-red`) на контроллере не
-работает как надо: специфика WB требует донастройки, и вся она встроена в
-пакет.
+Installing Node-RED by hand (`npm install -g node-red`) does not work well on
+a controller: the WB specifics require extra setup, and all of it is baked
+into the package.
 
-1. **Код и данные на постоянном разделе.** Корневой раздел мал, а npm-дерево
-   Node-RED весит ~120 МБ; пользовательские flows должны переживать
-   перепрошивку. Пакет держит рантайм и данные на `/mnt/data`: `apt upgrade`
-   меняет код и перезапускает сервис, ваши flows/учётки/доустановленные ноды
-   остаются.
-2. **Без интернета и компиляции.** npm тянул бы сотни пакетов из сети и
-   собирал нативные модули на контроллере. Здесь всё дерево `node_modules`
-   уже лежит внутри `.deb` — установка работает офлайн и ничего не
-   компилирует. Палитру сообщества `node-red-contrib-wirenboard` при желании
-   можно доставить через Palette Manager (нужен доступ в интернет).
-3. **Безопасность.** Node-RED выполняет произвольный код, а собственный логин
-   в пакете не настроен. Редактор слушает только loopback и прячется за
-   штатный логин homeui (только админ); сервис работает от непривилегированного
-   пользователя `wb-node-red` в systemd-песочнице.
-4. **Zero-config.** Дефолтный flow уже подключён к локальному MQTT-брокеру
-   (`127.0.0.1:1883`) и дереву устройств (`/devices/#`) — открываете редактор
-   и сразу видите живые данные; внутри готовый пример записи через
-   `.../on`-подтопик (включение зуммера).
+1. **Code and data on the persistent partition.** The root partition is
+   small, the Node-RED npm tree weighs ~120 MB, and user flows must survive
+   reflashing. The package keeps both the runtime and the data on
+   `/mnt/data`: `apt upgrade` replaces the code and restarts the service;
+   your flows / credentials / extra nodes stay.
+2. **No Internet, no compilation.** npm would pull hundreds of packages from
+   the network and compile native modules on the controller. Here the whole
+   `node_modules` tree already sits inside the `.deb` — installation works
+   offline and compiles nothing. The community palette
+   `node-red-contrib-wirenboard` can be added through the Palette Manager if
+   desired (Internet access required).
+3. **Security.** Node-RED executes arbitrary code, and no built-in login is
+   configured in this package. The editor listens on loopback only and hides
+   behind the standard homeui login (admin only); the service runs as the
+   unprivileged `wb-node-red` user in a systemd sandbox.
+4. **Zero-config.** The default flow is already wired to the local MQTT
+   broker (`127.0.0.1:1883`) and the device tree (`/devices/#`) — open the
+   editor and you immediately see live data; it includes a ready write
+   example via the `.../on` subtopic (turning on the buzzer).
 
-## Что это за пакет и как он собран
+## What kind of package this is and how it is built
 
-Это **не метапакет**, а обычный нативный `.deb` (`Architecture: all`), внутри
-которого лежит весь рантайм Node-RED. Сборка (см. `debian/rules`):
+This is **not a metapackage** but a regular native `.deb`
+(`Architecture: all`) that carries the entire Node-RED runtime inside. The
+build (see `debian/rules`):
 
-1. `npm ci` разворачивает дерево зависимостей строго по закреплённому
-   `vendor/package-lock.json` (Node-RED 5.0.0) — версии воспроизводимы,
-   сборка не решает ничего сама.
-2. Из дерева вырезается единственный платформозависимый биндинг
-   (`@node-rs/bcrypt`; Node-RED откатывается на pure-JS `bcryptjs`). Сборка
-   падает, если остаётся хоть один нативный `*.node`-бинарник — именно это
-   удерживает пакет платформонезависимым.
-3. Дерево пакуется в воспроизводимый tarball, рядом генерится SBOM —
-   машиночитаемая опись всех вендореных зависимостей (CycloneDX,
-   `usr/share/wb-node-red/sbom.cdx.json`) для аудита уязвимостей и
-   требований CRA.
+1. `npm ci` unfolds the dependency tree strictly from the pinned
+   `vendor/package-lock.json` (Node-RED 5.0.0) — versions are reproducible,
+   the build decides nothing on its own.
+2. The only platform-specific binding is stripped from the tree
+   (`@node-rs/bcrypt`; Node-RED falls back to pure-JS `bcryptjs`). The build
+   fails if a single native `*.node` binary remains — that is what keeps the
+   package architecture-independent.
+3. The tree is packed into a reproducible tarball, and an SBOM is generated
+   next to it — a machine-readable inventory of all vendored dependencies
+   (CycloneDX, `usr/share/wb-node-red/sbom.cdx.json`) for vulnerability
+   audits and CRA compliance.
 
-Сам Node.js не вендорится — он приходит из репозитория Wiren Board / Debian
-(`Depends: nodejs`) вместе с обновлениями безопасности.
+Node.js itself is not vendored — it comes from the Wiren Board / Debian
+repository (`Depends: nodejs`) along with its security updates.
 
-При установке `postinst` распаковывает tarball в
-`/mnt/data/wb-node-red-runtime` (замена атомарная: при битом архиве старый
-рантайм остаётся, и сервис перезапускается на нём), при первой установке сеет
-дефолтный flow и объявляет гейт homeui.
+At install time `postinst` extracts the tarball into
+`/mnt/data/wb-node-red-runtime` (the swap is atomic: on a corrupt archive the
+old runtime stays and the service restarts on it), seeds the default flow on
+first install and declares the homeui gate.
 
-## Доступ к редактору
+## Editor access
 
-Редактор отдаётся на **отдельном HTTPS-порту** `21880`, который nginx
-проксирует за стандартным логином Wiren Board (`auth_request`, **только
-админ**). Сессионная кука homeui привязана к хосту (без привязки к порту),
-поэтому доходит до порта; старый URL `/node-red/` оставлен как редирект.
-Компромисс: отдельный порт недоступен через туннель WB Cloud — доступ
-локальный/по LAN.
+The editor is served on a **dedicated HTTPS port** `21880`, which nginx
+proxies behind the standard Wiren Board login (`auth_request`, **admin
+only**). The homeui session cookie is bound to the host (not to the port), so
+it reaches the port; the old `/node-red/` URL is kept as a redirect.
+Trade-off: the dedicated port is not reachable through the WB Cloud tunnel —
+access is local / LAN only.
 
-Границей осознанно является именно *сетевой* гейт (in-app `adminAuth` нет):
-локально на контроллере `127.0.0.1:1880` — неаутентифицированный admin API,
-и любой локальный shell-аккаунт может управлять Node-RED.
+The boundary is deliberately the *network* gate (no in-app `adminAuth`):
+locally on the controller `127.0.0.1:1880` is an unauthenticated admin API,
+and any local shell account can control Node-RED.
 
-## Требования
+## Requirements
 
-Гейт редактора рендерит **homeui** из декларации
-`/etc/wb-homeui/gates.d/node-red.json`, которую ставит этот пакет. Нужен
-`wb-mqtt-homeui` с механизмом service-gates (точный минимум версии закреплён в
-`debian/control`). Без него пакет установится и сервис будет работать, но
-**редактор останется недоступным**, пока homeui не обновится: декларация лежит
-инертно и подхватывается автоматически при следующем старте homeui —
-переустановка или `dpkg-reconfigure` не нужны.
+The editor gate is rendered by **homeui** from the declaration
+`/etc/wb-homeui/gates.d/node-red.json` shipped by this package. It needs
+`wb-mqtt-homeui` with the service-gates mechanism (the exact minimum version
+is pinned in `debian/control`). Without it the package installs and the
+service runs, but **the editor stays unreachable** until homeui is updated:
+the declaration sits inert and is picked up automatically on the next homeui
+start — no reinstall or `dpkg-reconfigure` needed.
 
-TLS-сертификат отдельно готовить не нужно: homeui всегда держит файл
-`/etc/ssl/sslip.pem` (до выпуска настоящего сертификата — просроченная заглушка,
-браузер предупредит; предупреждение исчезает после получения серта).
+No TLS certificate needs to be prepared separately: homeui always keeps the
+`/etc/ssl/sslip.pem` file (an expired placeholder until the real certificate
+is issued — the browser will warn; the warning disappears once the
+certificate arrives).
 
-## Как это устроено на контроллере
+## How it is laid out on the controller
 
-| Что | Где |
+| What | Where |
 |---|---|
-| Код Node-RED | `/mnt/data/wb-node-red-runtime/node_modules/` (распаковывается из `.deb` при установке; перезаписывается при обновлении) |
-| Шаблон настроек | `/usr/lib/wb-node-red/settings.js` (перезаписывается при обновлении) |
-| Ваши переопределения настроек | `/mnt/data/wb-node-red/settings-user.js` (опционально, переживает обновления; мержится поверх шаблона — loopback-bind и `userDir` остаются закреплёнными) |
-| Ваши flows / учётки / ноды | `/mnt/data/wb-node-red/` (заполняется, если пусто; сохраняется) |
-| Сервис | `wb-node-red.service` → `node red.js`, пользователь `wb-node-red`, редактор на `127.0.0.1:1880` (httpAdminRoot `/`) |
-| Гейт | `/etc/wb-homeui/gates.d/node-red.json` — декларация (`internalPort 1880`, `externalPort 21880`, `role admin`, `menu.title`), которую homeui рендерит в server-блок nginx на порту 21880 |
-| Публичный доступ | `https://<homeui-host>:21880/` — admin-гейт homeui → `127.0.0.1:1880`; старый `/node-red/` 302-редиректит на `/open-node-red` |
-| MQTT | дефолтный flow → `127.0.0.1:1883` |
-| Меню homeui | «Node-RED» в разделе **Интеграции** — homeui генерирует пункт из `title` гейта (отдельный drop-in меню не нужен) |
+| Node-RED code | `/mnt/data/wb-node-red-runtime/node_modules/` (extracted from the `.deb` at install time; overwritten on upgrade) |
+| Settings template | `/usr/lib/wb-node-red/settings.js` (overwritten on upgrade) |
+| Your settings overrides | `/mnt/data/wb-node-red/settings-user.js` (optional, survives upgrades; merged on top of the template — the loopback bind and `userDir` stay pinned) |
+| Your flows / credentials / nodes | `/mnt/data/wb-node-red/` (seeded if empty; preserved) |
+| Service | `wb-node-red.service` → `node red.js`, user `wb-node-red`, editor on `127.0.0.1:1880` (httpAdminRoot `/`) |
+| Gate | `/etc/wb-homeui/gates.d/node-red.json` — a declaration (`internalPort 1880`, `externalPort 21880`, `role admin`, `menu.title`) that homeui renders into an nginx server block on port 21880 |
+| Public access | `https://<homeui-host>:21880/` — the homeui admin gate → `127.0.0.1:1880`; the old `/node-red/` 302-redirects to `/open-node-red` |
+| MQTT | default flow → `127.0.0.1:1883` |
+| homeui menu | "Node-RED" under **Integrations** — homeui generates the item from the gate's `title` (no separate menu drop-in needed) |
 
-## Структура репозитория
+## Repository layout
 
 ```
-vendor/    — package.json + package-lock.json: пин Node-RED и всех зависимостей
-config/    — settings.js (шаблон настроек), flows.json (дефолтный flow),
-             gates.d/node-red.json (декларация гейта для homeui)
-debian/    — упаковка: rules (сборка), postinst/postrm (установка/удаление),
-             unit сервиса, sysusers
-nginx/     — drop-in с 302-редиректом со старого /node-red/
-tests/     — pytest-набор, гоняется на каждой сборке (dh_auto_test):
-             инварианты упаковки + поведенческие тесты postinst
+vendor/    — package.json + package-lock.json: the Node-RED and dependency pin
+config/    — settings.js (settings template), flows.json (default flow),
+             gates.d/node-red.json (gate declaration for homeui)
+debian/    — packaging: rules (build), postinst/postrm (install/removal),
+             the service unit, sysusers
+nginx/     — drop-in with the 302 redirect from the old /node-red/
+tests/     — pytest suite, run on every build (dh_auto_test):
+             packaging invariants + postinst behavior tests
 ```
