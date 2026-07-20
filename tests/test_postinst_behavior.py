@@ -1,5 +1,12 @@
-"""Behavior tests: run the real `sh debian/postinst` against a throwaway root
-(WB_NODE_RED_ROOT seam) with system commands stubbed on PATH."""
+"""Поведенческие тесты debian/postinst: настоящий скрипт запускается через sh
+против одноразового каталога-корня (шов WB_NODE_RED_ROOT), системные команды
+подменены заглушками на PATH.
+
+Зачем: postinst — самая рискованная часть пакета (замена рантайма при
+обновлении, сохранность пользовательских flows, откат при битом архиве),
+и это единственный способ прогнать его логику на каждой сборке, без
+контроллера и без установки пакета.
+"""
 
 import os
 import stat

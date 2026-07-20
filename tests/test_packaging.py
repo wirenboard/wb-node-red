@@ -1,7 +1,9 @@
-"""Packaging invariants for the native wb-node-red Debian package.
+"""Инварианты упаковки: статические проверки файлов debian/, config/ и vendor/.
 
-File-reading checks that assert the package's contract (dependencies, bind
-addresses, the auth gate) without building or running anything.
+Зачем: контракт пакета (зависимости, loopback-bind, auth-гейт, сохранность
+пользовательских данных) закреплён явно — случайная правка debian/* ломает
+тест на сборке (dh_auto_test), а не выясняется на контроллере. Тесты только
+читают файлы репозитория, ничего не собирают и не запускают.
 """
 
 import json
