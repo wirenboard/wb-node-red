@@ -1,9 +1,9 @@
-"""Инварианты упаковки: статические проверки файлов debian/, config/ и vendor/.
+"""Packaging invariants: static checks over the debian/, config/ and vendor/ files.
 
-Зачем: контракт пакета (зависимости, loopback-bind, auth-гейт, сохранность
-пользовательских данных) закреплён явно — случайная правка debian/* ломает
-тест на сборке (dh_auto_test), а не выясняется на контроллере. Тесты только
-читают файлы репозитория, ничего не собирают и не запускают.
+Why: the package's contract (dependencies, loopback bind, auth gate, user-data
+preservation) is pinned explicitly — an accidental edit of debian/* breaks a
+test at build time (dh_auto_test) instead of surfacing on a controller. The
+tests only read repository files; nothing is built or executed.
 """
 
 import json
