@@ -1,0 +1,9 @@
+wb-node-red (1.0.0) stable; urgency=medium
+
+  * Initial release: native Node-RED for Wiren Board, installed with
+    `apt install wb-node-red`.
+    - Node-RED vendored at build time; Node.js from the distro.
+    - Hardened systemd service, editor on loopback behind the homeui admin gate
+      on a dedicated HTTPS port (21880); user data and runtime under /mnt/data.
+
+ -- Denis Smagin <denis.smagin@wirenboard.com>  Wed, 01 Jul 2026 10:12:03 +0200

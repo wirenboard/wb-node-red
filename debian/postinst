@@ -1,0 +1,73 @@
+#!/bin/sh
+# Create the service user and place the runtime tree + user data under /mnt/data.
+# The nginx gate is declared in /etc/wb-homeui/gates.d and rendered by homeui.
+set -e
+
+# Test seam: the behavior tests re-root all paths and stub commands on PATH.
+ROOT="${WB_NODE_RED_ROOT:-}"
+
+SVC_USER="wb-node-red"
+DATA_DIR="$ROOT/mnt/data/wb-node-red"
+RUNTIME_DIR="$ROOT/mnt/data/wb-node-red-runtime"
+RUNTIME_TARBALL="$ROOT/usr/share/wb-node-red/node_modules.tar.gz"
+SEED_FLOWS="$ROOT/usr/share/wb-node-red/flows.json"
+
+# homeui renders the gate from our gates.d drop-in; apply now if it is installed,
+# otherwise homeui applies it itself on its next start.
+apply_gate() {
+    command -v wb-homeui-gates >/dev/null 2>&1 && wb-homeui-gates apply >/dev/null 2>&1 || true
+}
+
+case "$1" in
+    configure)
+        # Everything we own lives on /mnt/data; never unpack onto the small root.
+        if ! mountpoint -q "$ROOT/mnt/data"; then
+            echo "wb-node-red: /mnt/data is not mounted — aborting (runtime and user data live there)." >&2
+            exit 1
+        fi
+
+        # The dh_installsysusers snippet runs at the debhelper token below —
+        # too late for the chown; create the user from sysusers.d now.
+        systemd-sysusers
+
+        # Replace the runtime on every upgrade. Stop the service first — the tree
+        # must not be swapped under a live process (dpkg-reconfigure has no prerm).
+        if [ -f "$RUNTIME_TARBALL" ]; then
+            deb-systemd-invoke stop wb-node-red.service >/dev/null 2>&1 || true
+            mkdir -p "$RUNTIME_DIR"
+            # On failure set -e skips the generated start below; the trap restarts
+            # the service (an extra start is a no-op).
+            trap 'deb-systemd-invoke start wb-node-red.service >/dev/null 2>&1 || true' EXIT
+            # Stage on the same filesystem and swap in with renames — a failed
+            # extract leaves the old runtime intact.
+            rm -rf "$RUNTIME_DIR/node_modules.staging"
+            mkdir -p "$RUNTIME_DIR/node_modules.staging"
+            tar -xzf "$RUNTIME_TARBALL" -C "$RUNTIME_DIR/node_modules.staging"
+            rm -rf "$RUNTIME_DIR/node_modules.old"
+            [ -e "$RUNTIME_DIR/node_modules" ] && \
+                mv "$RUNTIME_DIR/node_modules" "$RUNTIME_DIR/node_modules.old"
+            mv "$RUNTIME_DIR/node_modules.staging/node_modules" "$RUNTIME_DIR/node_modules"
+            rm -rf "$RUNTIME_DIR/node_modules.old" "$RUNTIME_DIR/node_modules.staging"
+            # make the renames durable before power can cut
+            sync
+        fi
+
+        # Seed if absent, never overwrite — and never through a symlink: the
+        # userDir is service-user-writable, a root cp would write through it.
+        mkdir -p "$DATA_DIR"
+        if [ ! -e "$DATA_DIR/flows.json" ] && [ ! -L "$DATA_DIR/flows.json" ] \
+            && [ -f "$SEED_FLOWS" ]; then
+            cp "$SEED_FLOWS" "$DATA_DIR/flows.json"
+        fi
+        chown -R "$SVC_USER:$SVC_USER" "$DATA_DIR"
+
+        apply_gate
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,42 @@
+#!/usr/bin/make -f
+# Vendor node-red via npm. The runtime ships as a tarball;
+# postinst extracts it to /mnt/data.
+export DH_VERBOSE = 1
+
+SHAREDIR := debian/wb-node-red/usr/share/wb-node-red
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cd vendor && npm ci --omit=dev --no-audit --no-fund
+	# drop the platform-specific @node-rs/bcrypt to keep Architecture: all (NR5 falls back to bcryptjs)
+	rm -rf vendor/node_modules/@node-rs
+	# arch:all invariant: no native binary may survive the strip
+	test -z "$$(find vendor/node_modules -name '*.node' -print -quit)"
+	# CRA: ship a CycloneDX SBOM of the vendored tree (needs npm >= 10).
+	# --omit=optional mirrors the strip; npm's nested pure-JS optionals ship unlisted.
+	cd vendor && npm sbom --sbom-format cyclonedx --omit=dev --omit=optional > sbom.cdx.json
+
+override_dh_auto_install:
+	# Static files are declared in debian/wb-node-red.install; here we only build
+	# the runtime tree into a reproducible tarball (postinst extracts it).
+	install -d $(SHAREDIR)
+	tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='@0' \
+		-czf $(SHAREDIR)/node_modules.tar.gz -C vendor node_modules
+	# explicit: the CI build chroot's debhelper predates dh_installsysusers
+	install -D -m 0644 debian/wb-node-red.sysusers \
+		debian/wb-node-red/usr/lib/sysusers.d/wb-node-red.conf
+
+override_dh_installsystemd:
+	# Stop before the upgrade swap, start after — avoids an editor-port collision.
+	dh_installsystemd --no-restart-after-upgrade
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	python3 -m pytest tests/ -q
+endif
+
+override_dh_auto_clean:
+	rm -rf vendor/node_modules
+	rm -f vendor/sbom.cdx.json

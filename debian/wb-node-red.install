@@ -1,0 +1,6 @@
+52wb-node-red                    etc/apt/apt.conf.d
+vendor/sbom.cdx.json             usr/share/wb-node-red
+config/settings.js               usr/lib/wb-node-red
+config/flows.json                usr/share/wb-node-red
+config/gates.d/node-red.json     etc/wb-homeui/gates.d
+nginx/wb-node-red-redirect.conf  etc/nginx/includes/default.wb.d

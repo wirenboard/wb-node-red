@@ -1,0 +1,5 @@
+// Keep wb-node-red updates explicit — a bump restarts the editor/runtime, so it
+// should be a deliberate `apt upgrade`, not an unattended-upgrades background event.
+Unattended-Upgrade::Package-Blacklist {
+    "wb-node-red";
+};
