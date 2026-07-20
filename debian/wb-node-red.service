@@ -1,6 +1,6 @@
 [Unit]
 Description=Node-RED for Wiren Board
-Documentation=https://wiki.wirenboard.com/wiki/Node-RED
+Documentation=https://wiki.wirenboard.com/wiki/Node-RED/en
 After=network.target mosquitto.service
 # Runtime tree and userDir both live on /mnt/data — wait for that mount.
 RequiresMountsFor=/mnt/data
