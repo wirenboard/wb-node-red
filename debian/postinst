@@ -18,11 +18,35 @@ apply_gate() {
     command -v wb-homeui-gates >/dev/null 2>&1 && wb-homeui-gates apply >/dev/null 2>&1 || true
 }
 
+# Flow file of an old install: flows.json, or a single legacy-named
+# flows_<host>.json. Ambiguity (several candidates) disqualifies the dir.
+find_old_flows() {
+    [ -f "$1/flows.json" ] && { echo "$1/flows.json"; return 0; }
+    cand=""
+    for f in "$1"/flows_*.json; do
+        [ -e "$f" ] || continue
+        case "$f" in *_cred.json) continue ;; esac
+        [ -n "$cand" ] && return 1
+        cand="$f"
+    done
+    [ -n "$cand" ] && echo "$cand"
+}
+
 case "$1" in
     configure)
         # Everything we own lives on /mnt/data; never unpack onto the small root.
         if ! mountpoint -q "$ROOT/mnt/data"; then
             echo "wb-node-red: /mnt/data is not mounted — aborting (runtime and user data live there)." >&2
+            exit 1
+        fi
+
+        # A foreign listener on the editor port (usually a manually installed
+        # Node-RED) would crash-loop the service and hand the :21880 gate to
+        # the wrong instance. On upgrade the port is legitimately ours.
+        if ! systemctl is-active --quiet wb-node-red.service 2>/dev/null \
+            && ss -ltnH "sport = :1880" 2>/dev/null | grep -q .; then
+            echo "wb-node-red: port 1880 is already in use — likely an old Node-RED (manual or Docker install)." >&2
+            echo "wb-node-red: stop it ('systemctl disable --now nodered' or 'docker stop nodered') and run 'dpkg --configure wb-node-red'." >&2
             exit 1
         fi
 
@@ -52,9 +76,30 @@ case "$1" in
             sync
         fi
 
+        # First install: adopt flows of a previous manual (npm) or Docker
+        # install — the wiki-documented userDirs. Copy only, originals stay.
+        # .config.runtime.json carries the credentials key — without it the
+        # copied flows_cred.json cannot be decrypted.
+        mkdir -p "$DATA_DIR"
+        if [ ! -e "$DATA_DIR/flows.json" ] && [ ! -L "$DATA_DIR/flows.json" ]; then
+            old_manual=$(find_old_flows "$ROOT/root/.node-red" || true)
+            old_docker=$(find_old_flows "$ROOT/mnt/data/root/nodered" || true)
+            if [ -n "$old_manual" ] && [ -n "$old_docker" ]; then
+                echo "wb-node-red: flows found in both /root/.node-red and /mnt/data/root/nodered — not migrating; copy the right one to $DATA_DIR/flows.json yourself."
+            elif [ -n "$old_manual$old_docker" ]; then
+                old_flows="${old_manual:-$old_docker}"
+                old_dir=$(dirname "$old_flows")
+                cp "$old_flows" "$DATA_DIR/flows.json"
+                old_cred="${old_flows%.json}_cred.json"
+                [ -f "$old_cred" ] && cp "$old_cred" "$DATA_DIR/flows_cred.json"
+                [ -f "$old_dir/.config.runtime.json" ] && \
+                    cp "$old_dir/.config.runtime.json" "$DATA_DIR/.config.runtime.json"
+                echo "wb-node-red: migrated flows from $old_dir (copied, originals kept); reinstall extra palette nodes via the editor."
+            fi
+        fi
+
         # Seed if absent, never overwrite — and never through a symlink: the
         # userDir is service-user-writable, a root cp would write through it.
-        mkdir -p "$DATA_DIR"
         if [ ! -e "$DATA_DIR/flows.json" ] && [ ! -L "$DATA_DIR/flows.json" ] \
             && [ -f "$SEED_FLOWS" ]; then
             cp "$SEED_FLOWS" "$DATA_DIR/flows.json"
