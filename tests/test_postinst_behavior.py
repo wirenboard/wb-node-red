@@ -26,6 +26,10 @@ SHELL_STUBS = {
     "chown": "#!/bin/sh\nexit 0\n",  # the sandbox has no wb-node-red user
     "deb-systemd-invoke": '#!/bin/sh\necho "deb-systemd-invoke $*" >> "$STUB_LOG"\nexit 0\n',
     "wb-homeui-gates": '#!/bin/sh\necho "wb-homeui-gates $*" >> "$STUB_LOG"\nexit 0\n',
+    # port-guard knobs: empty STUB_SS_OUT = nothing listens on :1880,
+    # systemctl rc 3 = our service inactive (systemd's "inactive" exit code)
+    "ss": '#!/bin/sh\n[ -n "${STUB_SS_OUT:-}" ] && echo "$STUB_SS_OUT"\nexit 0\n',
+    "systemctl": '#!/bin/sh\nexit "${STUB_SYSTEMCTL_RC:-3}"\n',
 }
 
 
@@ -83,13 +87,15 @@ class Sandbox:
     def runtime_marker(self) -> str:
         return (self.runtime / "node_modules/node-red/red.js").read_text()
 
-    def run(self, mountpoint_rc=0, action="configure"):
+    def run(self, mountpoint_rc=0, action="configure", ss_out="", systemctl_rc=3):
         env = dict(
             os.environ,
             WB_NODE_RED_ROOT=str(self.root),
             PATH=f"{self.stub_bin}:/usr/bin:/bin",
             STUB_LOG=str(self.log),
             STUB_MOUNTPOINT_RC=str(mountpoint_rc),
+            STUB_SS_OUT=ss_out,
+            STUB_SYSTEMCTL_RC=str(systemctl_rc),
         )
         return subprocess.run(
             ["sh", str(POSTINST), action], env=env, capture_output=True, text=True)
@@ -156,6 +162,54 @@ def test_unmounted_mnt_data_aborts_before_touching_anything(sb):
     res = sb.run(mountpoint_rc=1)
     assert res.returncode == 1
     assert not sb.runtime.exists()
+
+
+# --- port-1880 guard ----------------------------------------------------------
+
+FOREIGN_LISTENER = "LISTEN 0 511 *:1880 *:*"
+
+
+def test_foreign_listener_on_1880_aborts_before_touching_anything(sb):
+    res = sb.run(ss_out=FOREIGN_LISTENER)
+    assert res.returncode == 1
+    assert "1880" in res.stderr
+    assert not sb.runtime.exists()
+
+
+def test_upgrade_proceeds_when_own_service_holds_the_port(sb):
+    sb.place_old_runtime("previous")
+    res = sb.run(ss_out=FOREIGN_LISTENER, systemctl_rc=0)
+    assert res.returncode == 0, res.stderr
+    assert sb.runtime_marker() == "shipped"
+
+
+def test_free_port_and_inactive_service_pass_the_guard(sb):
+    res = sb.run(ss_out="", systemctl_rc=3)
+    assert res.returncode == 0, res.stderr
+
+
+# --- old-install hint ----------------------------------------------------------
+
+def test_first_install_hints_at_old_data_but_never_adopts_it(sb):
+    old = sb.root / "root/.node-red"
+    old.mkdir(parents=True)
+    (old / "flows.json").write_text("OLD FLOWS")
+    res = sb.run()
+    assert res.returncode == 0, res.stderr
+    assert "/root/.node-red" in res.stdout
+    assert "wiki" in res.stdout
+    assert (sb.data / "flows.json").read_text() == (
+        sb.share / "flows.json").read_text(), "must seed the default, not adopt"
+
+
+def test_no_hint_once_userdir_is_populated(sb):
+    (sb.root / "mnt/data/root/nodered").mkdir(parents=True)
+    sb.data.mkdir(parents=True)
+    (sb.data / "flows.json").write_text("MY FLOWS")
+    res = sb.run()
+    assert res.returncode == 0, res.stderr
+    assert "old Node-RED" not in res.stdout
+    assert (sb.data / "flows.json").read_text() == "MY FLOWS"
 
 
 # --- seed symlink guard ------------------------------------------------------

@@ -26,6 +26,16 @@ case "$1" in
             exit 1
         fi
 
+        # A foreign listener on the editor port (usually a manually installed
+        # Node-RED) would crash-loop the service and hand the :21880 gate to
+        # the wrong instance. On upgrade the port is legitimately ours.
+        if ! systemctl is-active --quiet wb-node-red.service 2>/dev/null \
+            && ss -ltnH "sport = :1880" 2>/dev/null | grep -q .; then
+            echo "wb-node-red: port 1880 is already in use — likely an old Node-RED (manual or Docker install)." >&2
+            echo "wb-node-red: stop it ('systemctl disable --now nodered' or 'docker stop nodered') and run 'dpkg --configure wb-node-red'. Migration guide: https://wiki.wirenboard.com/wiki/Node-RED" >&2
+            exit 1
+        fi
+
         # The dh_installsysusers snippet runs at the debhelper token below —
         # too late for the chown; create the user from sysusers.d now.
         systemd-sysusers
@@ -52,9 +62,18 @@ case "$1" in
             sync
         fi
 
+        # First install: never adopt a previous install's userDir, only point
+        # at the migration guide when one is around.
+        mkdir -p "$DATA_DIR"
+        if [ ! -e "$DATA_DIR/flows.json" ] && [ ! -L "$DATA_DIR/flows.json" ]; then
+            for old in /root/.node-red /mnt/data/root/nodered; do
+                [ -d "$ROOT$old" ] || continue
+                echo "wb-node-red: found data of an old Node-RED install in $old — to migrate your flows see https://wiki.wirenboard.com/wiki/Node-RED"
+            done
+        fi
+
         # Seed if absent, never overwrite — and never through a symlink: the
         # userDir is service-user-writable, a root cp would write through it.
-        mkdir -p "$DATA_DIR"
         if [ ! -e "$DATA_DIR/flows.json" ] && [ ! -L "$DATA_DIR/flows.json" ] \
             && [ -f "$SEED_FLOWS" ]; then
             cp "$SEED_FLOWS" "$DATA_DIR/flows.json"
