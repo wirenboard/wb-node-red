@@ -7,6 +7,8 @@ set -e
 ROOT="${WB_NODE_RED_ROOT:-}"
 
 SVC_USER="wb-node-red"
+# Present on the standard layout only; the extended rootfs has no data partition.
+DATA_PARTITION="$ROOT/dev/disk/by-label/data"
 DATA_DIR="$ROOT/mnt/data/wb-node-red"
 RUNTIME_DIR="$ROOT/mnt/data/wb-node-red-runtime"
 RUNTIME_TARBALL="$ROOT/usr/share/wb-node-red/node_modules.tar.gz"
@@ -21,9 +23,10 @@ apply_gate() {
 case "$1" in
     configure)
         # Everything we own lives on /mnt/data; never unpack onto the small root.
-        # On the extended-rootfs layout there is no data partition and /mnt/data
+        # A data partition that exists but is not mounted means a broken standard
+        # layout. On the extended rootfs there is no data partition and /mnt/data
         # is a plain directory on the large root — that is fine.
-        if ! mountpoint -q "$ROOT/mnt/data" && [ -e "$ROOT/dev/disk/by-label/data" ]; then
+        if [ -e "$DATA_PARTITION" ] && ! mountpoint -q "$ROOT/mnt/data"; then
             echo "wb-node-red: the data partition is not mounted on /mnt/data — aborting (runtime and user data live there)." >&2
             exit 1
         fi
