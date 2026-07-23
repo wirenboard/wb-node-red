@@ -79,6 +79,12 @@ class Sandbox:
     def corrupt_tarball(self):
         (self.share / "node_modules.tar.gz").write_bytes(b"not a tarball")
 
+    def place_data_partition_label(self):
+        """Standard layout: udev exposes the data partition as by-label/data."""
+        label = self.root / "dev/disk/by-label"
+        label.mkdir(parents=True)
+        (label / "data").touch()
+
     def place_old_runtime(self, marker: str):
         red = self.runtime / "node_modules/node-red"
         red.mkdir(parents=True)
@@ -158,10 +164,19 @@ def test_stale_staging_and_old_dirs_are_cleaned_up(sb):
     assert not (sb.runtime / "node_modules.staging").exists()
 
 
-def test_unmounted_mnt_data_aborts_before_touching_anything(sb):
+def test_unmounted_data_partition_aborts_before_touching_anything(sb):
+    # standard layout: the data partition exists but is not mounted — broken state
+    sb.place_data_partition_label()
     res = sb.run(mountpoint_rc=1)
     assert res.returncode == 1
     assert not sb.runtime.exists()
+
+
+def test_extended_rootfs_plain_mnt_data_dir_installs(sb):
+    # extended rootfs: no data partition at all, /mnt/data is a dir on the big root
+    res = sb.run(mountpoint_rc=32)
+    assert res.returncode == 0, res.stderr
+    assert sb.runtime_marker() == "shipped"
 
 
 # --- port-1880 guard ----------------------------------------------------------

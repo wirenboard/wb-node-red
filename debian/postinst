@@ -21,8 +21,10 @@ apply_gate() {
 case "$1" in
     configure)
         # Everything we own lives on /mnt/data; never unpack onto the small root.
-        if ! mountpoint -q "$ROOT/mnt/data"; then
-            echo "wb-node-red: /mnt/data is not mounted — aborting (runtime and user data live there)." >&2
+        # On the extended-rootfs layout there is no data partition and /mnt/data
+        # is a plain directory on the large root — that is fine.
+        if ! mountpoint -q "$ROOT/mnt/data" && [ -e "$ROOT/dev/disk/by-label/data" ]; then
+            echo "wb-node-red: the data partition is not mounted on /mnt/data — aborting (runtime and user data live there)." >&2
             exit 1
         fi
 
