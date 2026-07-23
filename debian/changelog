@@ -1,3 +1,11 @@
+wb-node-red (1.0.3) stable; urgency=medium
+
+  * Fix installation on the extended rootfs layout, where /mnt/data is a plain
+    directory on the root filesystem: abort only when an unmounted data
+    partition (/dev/disk/by-label/data) actually exists
+
+ -- Denis Smagin <denis.smagin@wirenboard.com>  Thu, 23 Jul 2026 09:30:00 +0200
+
 wb-node-red (1.0.2) stable; urgency=medium
 
   * Abort installation when a foreign process (a manual or Docker Node-RED)
