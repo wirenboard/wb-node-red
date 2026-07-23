@@ -174,6 +174,7 @@ def test_unmounted_data_partition_aborts_before_touching_anything(sb):
 
 def test_extended_rootfs_plain_mnt_data_dir_installs(sb):
     # extended rootfs: no data partition at all, /mnt/data is a dir on the big root
+    # (util-linux 2.41: rc 32 = "is not a mountpoint" for an existing directory)
     res = sb.run(mountpoint_rc=32)
     assert res.returncode == 0, res.stderr
     assert sb.runtime_marker() == "shipped"
