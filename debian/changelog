@@ -1,8 +1,6 @@
 wb-node-red (1.1.1) stable; urgency=medium
 
-  * Ship the homeui gate declaration in /usr/share/wb-mqtt-homeui/gates.d, not
-    in /etc: a package file under /etc is a dpkg conffile, and postrm removed
-    it by hand, so install/remove/install left the editor unreachable
+  * Ship the homeui gate declaration in /usr/share/wb-mqtt-homeui/gates.d
   * Remove the obsolete conffile /etc/wb-homeui/gates.d/node-red.json with
     dpkg-maintscript-helper
 
