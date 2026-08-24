@@ -73,12 +73,13 @@ and any local shell account can control Node-RED.
 ## Requirements
 
 The editor gate is rendered by **homeui** from the declaration
-`/etc/wb-homeui/gates.d/node-red.json` shipped by this package. It needs
-`wb-mqtt-homeui` with the service-gates mechanism (the exact minimum version
-is pinned in `debian/control`). Without it the package installs and the
-service runs, but **the editor stays unreachable** until homeui is updated:
-the declaration sits inert and is picked up automatically on the next homeui
-start — no reinstall or `dpkg-reconfigure` needed.
+`/usr/share/wb-mqtt-homeui/gates.d/node-red.json` shipped by this package as a
+package drop-in (an admin copy of the same name in `/etc/wb-homeui/gates.d/`
+overrides it). It needs `wb-mqtt-homeui` with the service-gates mechanism (the
+exact minimum version is pinned in `debian/control`). Without it the package
+installs and the service runs, but **the editor stays unreachable** until
+homeui is updated: the declaration sits inert and is picked up automatically
+on the next homeui start — no reinstall or `dpkg-reconfigure` needed.
 
 No TLS certificate needs to be prepared separately: homeui always keeps the
 `/etc/ssl/sslip.pem` file (an expired placeholder until the real certificate
@@ -94,7 +95,7 @@ certificate arrives).
 | Your settings overrides | `/mnt/data/wb-node-red/settings-user.js` (optional, survives upgrades; merged on top of the template — the loopback bind and `userDir` stay pinned) |
 | Your flows / credentials / nodes | `/mnt/data/wb-node-red/` (seeded if empty; preserved) |
 | Service | `wb-node-red.service` → `node red.js`, user `wb-node-red`, editor on `127.0.0.1:1880` (httpAdminRoot `/`) |
-| Gate | `/etc/wb-homeui/gates.d/node-red.json` — a declaration (`internalPort 1880`, `externalPort 21880`, `role admin`, `menu.title`) that homeui renders into an nginx server block on port 21880 |
+| Gate | `/usr/share/wb-mqtt-homeui/gates.d/node-red.json` — a package drop-in declaration (`internalPort 1880`, `externalPort 21880`, `role admin`, `menu.title`) that homeui renders into an nginx server block on port 21880 |
 | Public access | `https://<homeui-host>:21880/` — the homeui admin gate → `127.0.0.1:1880`; the old `/node-red/` 302-redirects to `/open-node-red` |
 | MQTT | default flow → `127.0.0.1:1883` |
 | homeui menu | "Node-RED" under **Integrations** — homeui generates the item from the gate's `title` (no separate menu drop-in needed) |

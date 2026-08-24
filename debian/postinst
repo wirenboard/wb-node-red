@@ -1,6 +1,7 @@
 #!/bin/sh
 # Create the service user and place the runtime tree + user data under /mnt/data.
-# The nginx gate is declared in /etc/wb-homeui/gates.d and rendered by homeui.
+# The nginx gate is declared by our drop-in in /usr/share/wb-mqtt-homeui/gates.d
+# and rendered by homeui.
 set -e
 
 # Test seam: the behavior tests re-root all paths and stub commands on PATH.

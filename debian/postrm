@@ -1,16 +1,17 @@
 #!/bin/sh
-# Remove the gate declaration and the runtime tree on remove/purge. User data
-# under /mnt/data/wb-node-red and the service user are intentionally kept
-# (sysusers.d convention: never remove users that may still own files).
+# Remove the runtime tree on remove/purge. The gate declaration is a plain
+# package file, so dpkg unlinks it before this script runs (Policy 6.8) — only
+# the re-render is ours. User data under /mnt/data/wb-node-red and the service
+# user are intentionally kept (sysusers.d convention: never remove users that
+# may still own files).
 set -e
 
 RUNTIME_DIR="/mnt/data/wb-node-red-runtime"
-GATE_JSON="/etc/wb-homeui/gates.d/node-red.json"
 
 case "$1" in
     remove|purge)
-        rm -f "$GATE_JSON"
-        # re-render the remaining gates (drops ours + reloads nginx); harmless if absent
+        # re-render the remaining gates (ours is already gone) + reload nginx;
+        # harmless if absent
         command -v wb-homeui-gates >/dev/null 2>&1 && wb-homeui-gates apply >/dev/null 2>&1 || true
         # Runtime code is package-owned (extracted, dpkg-untracked) — remove it.
         # The user data dir is never touched here.

@@ -112,14 +112,17 @@ def test_runtime_tree_delivered_to_mnt_data_consistently():
     assert "/mnt/data/wb-node-red-runtime/node_modules/node-red/red.js" in unit
 
 
-def test_postrm_removes_runtime_and_gate_but_preserves_user_data():
+def test_postrm_removes_runtime_but_preserves_user_data():
     postrm = _read("debian/postrm")
     assert "/mnt/data/wb-node-red-runtime" in postrm
     assert 'rm -rf "$RUNTIME_DIR"' in postrm
     # sysusers convention: the user stays (it may still own files on /mnt/data)
     assert "deluser" not in postrm
-    # the gate declaration is dropped and the remaining gates re-rendered
-    assert "/etc/wb-homeui/gates.d/node-red.json" in postrm
+    # The gate is a plain package file: dpkg unlinks it before postrm runs
+    # (Policy 6.8), and unlinking it by hand is what broke reinstall while it
+    # lived in /etc as a conffile. Only the re-render stays ours.
+    assert "node-red.json" not in postrm
+    assert "wb-homeui/gates.d" not in postrm
     assert "wb-homeui-gates apply" in postrm
     # the user data dir is NEVER removed automatically.
     assert 'rm -rf "/mnt/data/wb-node-red"' not in postrm
@@ -216,10 +219,52 @@ def test_gate_declared_as_homeui_gates_d_json():
     assert title.get("ru") and title.get("en")
 
 
-def test_gate_json_shipped_to_homeui_gates_dir():
+def test_gate_json_shipped_as_homeui_package_drop_in():
+    """homeui reads gates from two dirs: /usr/share for package-shipped ones and
+    /etc/wb-homeui for the admin's. Ours is a package gate — and a package file
+    under /etc would be a dpkg conffile, which is what broke reinstall."""
     install = _read("debian/wb-node-red.install")
     assert "config/gates.d/node-red.json" in install
-    assert "etc/wb-homeui/gates.d" in install
+    assert "usr/share/wb-mqtt-homeui/gates.d" in install
+    # neither of the two ways a file can land in /etc may put the gate back
+    assert "etc/wb-homeui" not in install
+    assert "etc/wb-homeui" not in _read("debian/rules")
+
+
+def test_maintscript_drops_the_legacy_gate_conffile():
+    """Before 1.1.1 the gate was shipped into /etc, where dpkg registered it as
+    a conffile. dpkg never drops an obsolete conffile on its own, and an /etc
+    gate shadows the package one, so the stale file is removed explicitly.
+    The version is a historical fact: it is NOT bumped with the package."""
+    lines = [ln for ln in _read("debian/wb-node-red.maintscript").splitlines()
+             if ln.strip() and not ln.lstrip().startswith("#")]
+    assert len(lines) == 1, lines
+    fields = lines[0].split()
+    assert fields[0] == "rm_conffile"
+    assert fields[1] == "/etc/wb-homeui/gates.d/node-red.json"
+    # trailing "~" also covers locally rebuilt versions of the last release
+    # that still shipped the conffile
+    assert fields[2].endswith("~")
+    # dh_installdeb appends the '-- "$@"' itself; a literal one here is an error
+    assert "--" not in fields
+
+
+def test_maintscript_prior_version_is_not_ahead_of_the_changelog():
+    """A prior-version above the current release would never trigger."""
+    prior = _read("debian/wb-node-red.maintscript").split()[2]
+    version = re.match(r"\S+ \(([^)]+)\)", _read("debian/changelog")).group(1)
+    dpkg = shutil.which("dpkg")
+    if dpkg is None:
+        pytest.skip("dpkg not available")
+    assert subprocess.run([dpkg, "--compare-versions", prior, "le", version],
+                          check=False).returncode == 0, (prior, version)
+
+
+def test_maintscript_file_is_not_executable():
+    """debhelper RUNS an executable config file and takes its stdout as the
+    content, so a stray chmod +x would silently drop the rm_conffile."""
+    mode = (DEBIAN / "wb-node-red.maintscript").stat().st_mode
+    assert not mode & 0o111, f"{mode & 0o777:#o}"
 
 
 def test_postinst_applies_gate_through_homeui_cli_not_handrolled_nginx():
