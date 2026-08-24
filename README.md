@@ -75,11 +75,14 @@ and any local shell account can control Node-RED.
 The editor gate is rendered by **homeui** from the declaration
 `/usr/share/wb-mqtt-homeui/gates.d/node-red.json` shipped by this package as a
 package drop-in (an admin copy of the same name in `/etc/wb-homeui/gates.d/`
-overrides it). It needs `wb-mqtt-homeui` with the service-gates mechanism (the
-exact minimum version is pinned in `debian/control`). Without it the package
-installs and the service runs, but **the editor stays unreachable** until
-homeui is updated: the declaration sits inert and is picked up automatically
-on the next homeui start — no reinstall or `dpkg-reconfigure` needed.
+overrides it). Up to 1.1.0 the declaration itself was shipped into `/etc`, so
+upgrading sets an edited copy aside as `node-red.json.dpkg-bak`, which homeui
+does not read — copy it back to `node-red.json` to keep the override. It
+needs `wb-mqtt-homeui` with the service-gates mechanism (the exact minimum
+version is pinned in `debian/control`). Without it the package installs and
+the service runs, but **the editor stays unreachable** until homeui is
+updated: the declaration sits inert and is picked up automatically on the
+next homeui start — no reinstall or `dpkg-reconfigure` needed.
 
 No TLS certificate needs to be prepared separately: homeui always keeps the
 `/etc/ssl/sslip.pem` file (an expired placeholder until the real certificate

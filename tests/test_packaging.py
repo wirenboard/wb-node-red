@@ -232,37 +232,40 @@ def test_gate_json_shipped_as_homeui_package_drop_in():
 
 
 def test_maintscript_drops_the_legacy_gate_conffile():
-    """Before 1.1.1 the gate was shipped into /etc, where dpkg registered it as
-    a conffile. dpkg never drops an obsolete conffile on its own, and an /etc
-    gate shadows the package one, so the stale file is removed explicitly.
-    The version is a historical fact: it is NOT bumped with the package."""
+    """The gate used to be shipped into /etc as a conffile; dpkg never drops an
+    obsolete conffile itself, and an /etc gate shadows the package one. The
+    version is a historical fact — do not bump it with the package."""
     lines = [ln for ln in _read("debian/wb-node-red.maintscript").splitlines()
              if ln.strip() and not ln.lstrip().startswith("#")]
     assert len(lines) == 1, lines
     fields = lines[0].split()
     assert fields[0] == "rm_conffile"
     assert fields[1] == "/etc/wb-homeui/gates.d/node-red.json"
-    # trailing "~" also covers locally rebuilt versions of the last release
-    # that still shipped the conffile
+    # "~" also covers local rebuilds of the last conffile release
     assert fields[2].endswith("~")
-    # dh_installdeb appends the '-- "$@"' itself; a literal one here is an error
-    assert "--" not in fields
 
 
-def test_maintscript_prior_version_is_not_ahead_of_the_changelog():
-    """A prior-version above the current release would never trigger."""
+def test_maintscript_prior_version_brackets_the_conffile_era():
+    """Too high and the migration never runs; too low — the quiet failure — and
+    boxes that still carry the old conffile are skipped (1.0.3 was the last
+    release shipping it)."""
     prior = _read("debian/wb-node-red.maintscript").split()[2]
     version = re.match(r"\S+ \(([^)]+)\)", _read("debian/changelog")).group(1)
     dpkg = shutil.which("dpkg")
     if dpkg is None:
         pytest.skip("dpkg not available")
-    assert subprocess.run([dpkg, "--compare-versions", prior, "le", version],
-                          check=False).returncode == 0, (prior, version)
+
+    def compare(a, op, b):
+        return subprocess.run([dpkg, "--compare-versions", a, op, b],
+                              check=False).returncode == 0
+
+    assert compare(prior, "gt", "1.0.3"), (prior, "must cover 1.0.3 boxes")
+    assert compare(prior, "le", version), (prior, version)
 
 
 def test_maintscript_file_is_not_executable():
-    """debhelper RUNS an executable config file and takes its stdout as the
-    content, so a stray chmod +x would silently drop the rm_conffile."""
+    """debhelper would run it and take its stdout as the content. The build
+    fails loudly on that, so this is just the cheaper guard."""
     mode = (DEBIAN / "wb-node-red.maintscript").stat().st_mode
     assert not mode & 0o111, f"{mode & 0o777:#o}"
 

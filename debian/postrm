@@ -1,20 +1,20 @@
 #!/bin/sh
-# Remove the runtime tree on remove/purge. The gate declaration is a plain
-# package file, so dpkg unlinks it before this script runs (Policy 6.8) — only
-# the re-render is ours. User data under /mnt/data/wb-node-red and the service
-# user are intentionally kept (sysusers.d convention: never remove users that
-# may still own files).
+# Remove the runtime tree on remove/purge. The gate is a plain package file:
+# dpkg unlinks it before this script runs (Policy 6.8), so only the re-render is
+# ours. User data and the service user stay (sysusers.d: never remove a user
+# that may still own files).
 set -e
 
-RUNTIME_DIR="/mnt/data/wb-node-red-runtime"
+# Test seam: the behavior tests re-root all paths and stub commands on PATH.
+ROOT="${WB_NODE_RED_ROOT:-}"
+
+RUNTIME_DIR="$ROOT/mnt/data/wb-node-red-runtime"
 
 case "$1" in
     remove|purge)
-        # re-render the remaining gates (ours is already gone) + reload nginx;
-        # harmless if absent
+        # re-render the remaining gates and reload nginx; harmless if absent
         command -v wb-homeui-gates >/dev/null 2>&1 && wb-homeui-gates apply >/dev/null 2>&1 || true
-        # Runtime code is package-owned (extracted, dpkg-untracked) — remove it.
-        # The user data dir is never touched here.
+        # runtime code is package-owned (extracted, dpkg-untracked); user data is not
         rm -rf "$RUNTIME_DIR"
         ;;
 esac

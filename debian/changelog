@@ -3,6 +3,9 @@ wb-node-red (1.1.1) stable; urgency=medium
   * Ship the homeui gate declaration in /usr/share/wb-mqtt-homeui/gates.d
   * Remove the obsolete conffile /etc/wb-homeui/gates.d/node-red.json with
     dpkg-maintscript-helper
+  * A gate edited on the box is kept as node-red.json.dpkg-bak and stops
+    applying (homeui reads only *.json): copy it back to node-red.json to keep
+    overriding the package gate
 
  -- Ilya Tikhonyuk <ilya.tikhonyuk@wirenboard.com>  Fri, 21 Aug 2026 19:15:00 +0300
 
