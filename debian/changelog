@@ -9,6 +9,12 @@ wb-node-red (1.1.1) stable; urgency=medium
 
  -- Ilya Tikhonyuk <ilya.tikhonyuk@wirenboard.com>  Fri, 21 Aug 2026 19:15:00 +0300
 
+wb-node-red (1.1.0) stable; urgency=medium
+
+  * Bump Node-RED to 5.0.4
+
+ -- Ilya Tikhonyuk <ilya.tikhonyuk@wirenboard.com>  Thu, 20 Aug 2026 20:00:00 +0300
+
 wb-node-red (1.0.3) stable; urgency=medium
 
   * Fix installation on the extended rootfs layout, where /mnt/data is a plain
