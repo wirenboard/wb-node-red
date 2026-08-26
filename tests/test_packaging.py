@@ -247,7 +247,7 @@ def test_maintscript_drops_the_legacy_gate_conffile():
 
 def test_maintscript_prior_version_brackets_the_conffile_era():
     """Too high and the migration never runs; too low — the quiet failure — and
-    boxes that still carry the old conffile are skipped (1.0.3 was the last
+    boxes that still carry the old conffile are skipped (1.1.0 was the last
     release shipping it)."""
     prior = _read("debian/wb-node-red.maintscript").split()[2]
     version = re.match(r"\S+ \(([^)]+)\)", _read("debian/changelog")).group(1)
@@ -259,7 +259,7 @@ def test_maintscript_prior_version_brackets_the_conffile_era():
         return subprocess.run([dpkg, "--compare-versions", a, op, b],
                               check=False).returncode == 0
 
-    assert compare(prior, "gt", "1.0.3"), (prior, "must cover 1.0.3 boxes")
+    assert compare(prior, "gt", "1.1.0"), (prior, "must cover 1.1.0 boxes")
     assert compare(prior, "le", version), (prior, version)
 
 
