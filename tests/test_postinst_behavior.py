@@ -1,4 +1,4 @@
-"""Behavior tests for debian/postinst: the real script runs via sh against a
+"""Behavior tests for debian/postinst and debian/postrm: the real script runs via sh against a
 throwaway root directory (the WB_NODE_RED_ROOT seam), with system commands
 replaced by stubs on PATH.
 
@@ -18,6 +18,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 POSTINST = REPO / "debian" / "postinst"
+POSTRM = REPO / "debian" / "postrm"
 
 # STUB_* env knobs let each test drive a branch without editing the stubs
 SHELL_STUBS = {
@@ -105,6 +106,16 @@ class Sandbox:
         )
         return subprocess.run(
             ["sh", str(POSTINST), action], env=env, capture_output=True, text=True)
+
+    def run_postrm(self, action="remove"):
+        env = dict(
+            os.environ,
+            WB_NODE_RED_ROOT=str(self.root),
+            PATH=f"{self.stub_bin}:/usr/bin:/bin",
+            STUB_LOG=str(self.log),
+        )
+        return subprocess.run(
+            ["sh", str(POSTRM), action], env=env, capture_output=True, text=True)
 
     def log_text(self) -> str:
         return self.log.read_text()
@@ -249,3 +260,54 @@ def test_configure_succeeds_when_homeui_gate_cli_is_absent(sb):
     assert res.returncode == 0, res.stderr
     assert sb.runtime_marker() == "shipped"
     assert "wb-homeui-gates" not in sb.log_text()
+
+
+# --- removal (postrm) --------------------------------------------------------
+
+def test_postrm_remove_drops_the_runtime_but_keeps_user_data(sb):
+    sb.place_old_runtime("previous")
+    sb.data.mkdir(parents=True, exist_ok=True)
+    (sb.data / "flows.json").write_text("MY FLOWS")
+
+    res = sb.run_postrm("remove")
+
+    assert res.returncode == 0, res.stderr
+    assert not sb.runtime.exists()
+    assert (sb.data / "flows.json").read_text() == "MY FLOWS"
+    assert "wb-homeui-gates apply" in sb.log_text()
+
+
+def test_postrm_leaves_the_gate_declaration_alone(sb):
+    """dpkg unlinks the package's files before postrm (Policy 6.8); removing the
+    gate by hand is what broke reinstall."""
+    gate = sb.root / "usr/share/wb-mqtt-homeui/gates.d/node-red.json"
+    gate.parent.mkdir(parents=True)
+    gate.write_text('{"internalPort": 1880}')
+
+    res = sb.run_postrm("purge")
+
+    assert res.returncode == 0, res.stderr
+    assert gate.exists()
+
+
+def test_postrm_upgrade_keeps_the_runtime(sb):
+    """postrm also runs with "upgrade": wiping the runtime there would delete
+    the tree just unpacked."""
+    sb.place_old_runtime("previous")
+
+    res = sb.run_postrm("upgrade")
+
+    assert res.returncode == 0, res.stderr
+    assert sb.runtime_marker() == "previous"
+    assert "wb-homeui-gates apply" not in sb.log_text()
+
+
+def test_postrm_survives_a_missing_gate_cli(sb):
+    """homeui may already be gone when we are removed."""
+    sb.place_old_runtime("previous")
+    sb.drop_gate_cli()
+
+    res = sb.run_postrm("remove")
+
+    assert res.returncode == 0, res.stderr
+    assert not sb.runtime.exists()

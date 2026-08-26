@@ -1,0 +1,1 @@
+rm_conffile /etc/wb-homeui/gates.d/node-red.json 1.1.1~
