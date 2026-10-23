@@ -38,7 +38,7 @@ This is **not a metapackage** but a regular native `.deb`
 build (see `debian/rules`):
 
 1. `npm ci` unfolds the dependency tree strictly from the pinned
-   `vendor/package-lock.json` (Node-RED 5.0.0) — versions are reproducible,
+   `vendor/package-lock.json` (Node-RED 5.0.9) — versions are reproducible,
    the build decides nothing on its own.
 2. The only platform-specific binding is stripped from the tree
    (`@node-rs/bcrypt`; Node-RED falls back to pure-JS `bcryptjs`). The build
