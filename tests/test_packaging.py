@@ -178,10 +178,9 @@ def test_flow_points_at_local_broker_and_device_tree():
     flows = json.loads(_read("config/flows.json"))
     brokers = [n for n in flows if n.get("type") == "mqtt-broker"]
     assert brokers, "expected a pre-wired mqtt-broker node"
-    # 127.0.0.1, not "localhost": under verbatim DNS (Node >= 17) localhost can
-    # resolve to ::1 first, but mosquitto usually listens IPv4-only.
-    assert brokers[0]["broker"] == "127.0.0.1"
-    assert brokers[0]["port"] == "1883"
+    # MQTT.js "+unix" scheme: Node-RED passes a "://" broker string through to
+    # mqtt.connect() verbatim (port ignored), and MQTT.js connects to the path.
+    assert brokers[0]["broker"] == "mqtt+unix:///var/run/mosquitto/mosquitto.sock"
     topics_nodes = [n for n in flows if n.get("type") == "mqtt in"]
     assert any(n.get("topic") == "/devices/#" for n in topics_nodes)
     # the mqtt-in node must reference the broker node's id, or it is disconnected
