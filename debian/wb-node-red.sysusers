@@ -1,1 +1,5 @@
 u wb-node-red - "Wiren Board Node-RED" /mnt/data/wb-node-red -
+# The default flow talks to mosquitto over /run/mosquitto/mosquitto.sock:
+# the socket is 0770 mosquitto:mosquitto, and wb-configs makes /run/mosquitto
+# group-traversable (g+x) — group membership is the intended access path.
+m wb-node-red mosquitto

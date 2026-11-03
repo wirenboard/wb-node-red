@@ -27,7 +27,7 @@ into the package.
    behind the standard homeui login (admin only); the service runs as the
    unprivileged `wb-node-red` user in a systemd sandbox.
 4. **Zero-config.** The default flow is already wired to the local MQTT
-   broker (`127.0.0.1:1883`) and the device tree (`/devices/#`) — open the
+   broker (unix socket `/var/run/mosquitto/mosquitto.sock`) and the device tree (`/devices/#`) — open the
    editor and you immediately see live data; it includes a ready write
    example via the `.../on` subtopic (turning on the buzzer).
 
@@ -97,10 +97,10 @@ certificate arrives).
 | Settings template | `/usr/lib/wb-node-red/settings.js` (overwritten on upgrade) |
 | Your settings overrides | `/mnt/data/wb-node-red/settings-user.js` (optional, survives upgrades; merged on top of the template — the loopback bind and `userDir` stay pinned) |
 | Your flows / credentials / nodes | `/mnt/data/wb-node-red/` (seeded if empty; preserved) |
-| Service | `wb-node-red.service` → `node red.js`, user `wb-node-red`, editor on `127.0.0.1:1880` (httpAdminRoot `/`) |
+| Service | `wb-node-red.service` → `node red.js`, user `wb-node-red` (member of `mosquitto` for the broker socket), editor on `127.0.0.1:1880` (httpAdminRoot `/`) |
 | Gate | `/usr/share/wb-mqtt-homeui/gates.d/node-red.json` — a package drop-in declaration (`internalPort 1880`, `externalPort 21880`, `role admin`, `menu.title`) that homeui renders into an nginx server block on port 21880 |
 | Public access | `https://<homeui-host>:21880/` — the homeui admin gate → `127.0.0.1:1880`; the old `/node-red/` 302-redirects to `/open-node-red` |
-| MQTT | default flow → `127.0.0.1:1883` |
+| MQTT | default flow → `mqtt+unix:///var/run/mosquitto/mosquitto.sock` (mosquitto's local unix socket listener) |
 | homeui menu | "Node-RED" under **Integrations** — homeui generates the item from the gate's `title` (no separate menu drop-in needed) |
 
 ## Repository layout
